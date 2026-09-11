@@ -150,7 +150,14 @@ button, input { font: inherit; }
   background: white;
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 10px 12px;
+  padding: 12px;
+  padding-right: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+.connect-top {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -175,18 +182,63 @@ button, input { font: inherit; }
   color: rgba(42, 28, 20, 0.62);
   margin-top: 2px;
 }
+.connect-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(42, 28, 20, 0.08);
+  color: var(--ink);
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+.message.connect-card-generic .connect-dismiss {
+  background: rgba(244, 200, 92, 0.18);
+  color: var(--gold);
+}
+.connect-actions {
+  display: flex;
+  gap: 8px;
+}
 .connect-card .connect-btn {
   border: none;
-  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
-  color: white;
   border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
-  flex-shrink: 0;
 }
 .connect-card .connect-btn:disabled { opacity: 0.6; cursor: default; }
+.connect-btn-chat {
+  flex: 1;
+  background: rgba(255, 111, 61, 0.1);
+  color: var(--sun-dark);
+  border: 1px solid rgba(255, 111, 61, 0.3);
+  padding: 9px 10px;
+  font-size: 0.8rem;
+}
+.connect-btn-call {
+  /* Promoted CTA — bigger share of the row, filled, bolder */
+  flex: 1.6;
+  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
+  color: white;
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  box-shadow: 0 8px 18px rgba(232, 83, 47, 0.3);
+}
+.message.connect-card-generic .connect-btn-call {
+  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+  color: var(--ink);
+  box-shadow: 0 8px 18px rgba(244, 200, 92, 0.35);
+}
+.message.connect-card-generic .connect-btn-chat {
+  background: rgba(244, 200, 92, 0.12);
+  color: var(--gold);
+  border-color: rgba(244, 200, 92, 0.35);
+}
 
 /* Default "we haven't matched you to anyone yet" card — deliberately
    premium/exclusive-feeling (dark + gold, shimmer) rather than the plain
@@ -222,13 +274,6 @@ button, input { font: inherit; }
 }
 .connect-card-generic .connect-meta {
   color: rgba(255, 247, 240, 0.72);
-}
-.connect-card-generic .connect-btn {
-  align-self: stretch;
-  text-align: center;
-  margin-top: 4px;
-  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-  color: var(--ink);
 }
 
 .photo-message img {

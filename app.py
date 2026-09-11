@@ -184,6 +184,7 @@ messages = []
 # the earlier made-up per-session-₹ demo data.
 astrologers = [
     {
+        'id': 'mahalakshmi',
         'name': 'Mahalakshmi',
         'specialty': 'Face reading, Palm reading, Numerology',
         'languages': 'Hindi, English, Telugu',
@@ -195,6 +196,7 @@ astrologers = [
         'image': 'https://ui-avatars.com/api/?name=Mahalakshmi&background=ff8a5c&color=fff&size=128',
     },
     {
+        'id': 'samrat',
         'name': 'Samrat',
         'specialty': 'Face reading, Tarot, Vedic',
         'languages': 'Hindi, English, Telugu, Marathi',
@@ -206,6 +208,7 @@ astrologers = [
         'image': 'https://ui-avatars.com/api/?name=Samrat&background=e8623d&color=fff&size=128',
     },
     {
+        'id': 'nidhi',
         'name': 'Nidhi',
         'specialty': 'Face reading, Palm reading, Numerology',
         'languages': 'Hindi, English, Telugu',
