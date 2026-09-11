@@ -134,12 +134,6 @@ CONNECT_LABELS = {
     'ml': "ഇപ്പോൾ ബന്ധിപ്പിക്കുക",
 }
 
-CATEGORY_TO_ASTROLOGER_NAME = {
-    'love': 'Astro Seema',
-    'career': 'Vikram Joshi',
-    'finance': 'Vikram Joshi',
-    'marriage': 'Mira Nair',
-}
 
 quick_replies = [
     'Love guidance',
@@ -152,33 +146,42 @@ quick_replies = [
 
 messages = []
 
+# Matches the real AstroLokal app's astrologer roster shape (name, specialty
+# tags, languages, per-minute coin pricing, live availability) rather than
+# the earlier made-up per-session-₹ demo data.
 astrologers = [
     {
-        'name': 'Astro Seema',
-        'specialty': 'Love & Relationship Guidance',
-        'experience': '12 years',
-        'rating': 4.9,
-        'price': '₹1499',
-        'availability': 'Available today',
-        'image': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-        'name': 'Vikram Joshi',
-        'specialty': 'Career & Business Astrology',
-        'experience': '15 years',
-        'rating': 4.8,
-        'price': '₹1999',
-        'availability': 'Next slot: 6:30 PM',
-        'image': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-        'name': 'Mira Nair',
-        'specialty': 'Marriage & Compatibility',
+        'name': 'Mahalakshmi',
+        'specialty': 'Face reading, Palm reading, Numerology',
+        'languages': 'Hindi, English, Telugu',
         'experience': '10 years',
-        'rating': 4.9,
-        'price': '₹1799',
-        'availability': 'Available in 30 mins',
-        'image': 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=400&q=80',
+        'rating': 4.4,
+        'price': '10/min',
+        'price_original': '56/min',
+        'availability': 'Available now',
+        'image': 'https://ui-avatars.com/api/?name=Mahalakshmi&background=ff8a5c&color=fff&size=128',
+    },
+    {
+        'name': 'Samrat',
+        'specialty': 'Face reading, Tarot, Vedic',
+        'languages': 'Hindi, English, Telugu, Marathi',
+        'experience': '7 years',
+        'rating': 4.6,
+        'price': '12/min',
+        'price_original': None,
+        'availability': 'Busy, wait ~15 min',
+        'image': 'https://ui-avatars.com/api/?name=Samrat&background=e8623d&color=fff&size=128',
+    },
+    {
+        'name': 'Nidhi',
+        'specialty': 'Face reading, Palm reading, Numerology',
+        'languages': 'Hindi, English, Telugu',
+        'experience': '3 years',
+        'rating': 4.4,
+        'price': '15/min',
+        'price_original': '25/min',
+        'availability': 'Available now',
+        'image': 'https://ui-avatars.com/api/?name=Nidhi&background=ff6f47&color=fff&size=128',
     },
 ]
 
@@ -199,19 +202,6 @@ packages = [
         'description': 'Detailed compatibility and relationship analysis.'
     },
 ]
-
-tickets = [
-    {'id': 'AST-1042', 'title': 'Payout status clarification', 'status': 'In Progress', 'updated_at': '2 hours ago'},
-    {'id': 'AST-1045', 'title': 'KYC document rejection review', 'status': 'Open', 'updated_at': '5 hours ago'},
-    {'id': 'AST-1049', 'title': 'Salary report request', 'status': 'Resolved', 'updated_at': 'Yesterday'},
-]
-
-stats = {
-    'active_users': 1284,
-    'booked_consultations': 389,
-    'avg_response_time': '2m 14s',
-    'conversion_rate': '18.6%',
-}
 
 
 def normalize_text(text: str) -> str:
@@ -249,12 +239,10 @@ def is_prediction_intent(question: str, lang: str) -> bool:
     return any(keyword in normalized for keyword in keywords)
 
 
-def pick_astrologer_for_intent(intent):
-    name = CATEGORY_TO_ASTROLOGER_NAME.get(intent)
-    if name:
-        for astrologer in astrologers:
-            if astrologer['name'] == name:
-                return astrologer
+def pick_available_astrologer():
+    for astrologer in astrologers:
+        if not astrologer['availability'].lower().startswith('busy'):
+            return astrologer
     return astrologers[0]
 
 
@@ -298,10 +286,6 @@ def home():
         'index.html',
         quick_replies=quick_replies,
         messages=messages,
-        astrologers=astrologers,
-        packages=packages,
-        tickets=tickets,
-        stats=stats,
     )
 
 
@@ -325,7 +309,7 @@ def ask():
         # code-level gate pattern astrohelp uses for its hard rules.
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
-        astrologer = pick_astrologer_for_intent(intent)
+        astrologer = pick_available_astrologer()
         action = {
             'type': 'connect_popup',
             'label': CONNECT_LABELS.get(lang, CONNECT_LABELS['en']),

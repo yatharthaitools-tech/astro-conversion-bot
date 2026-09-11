@@ -26,6 +26,14 @@ REQUEST_TIMEOUT_SECONDS = 15
 
 _SCOPES = ['https://www.googleapis.com/auth/cloud-platform']
 
+LANGUAGE_NAMES = {
+    'en': 'English',
+    'hi': 'Hindi, in Devanagari script',
+    'ta': 'Tamil',
+    'te': 'Telugu',
+    'ml': 'Malayalam',
+}
+
 _credentials = None
 _project_id = None
 _credentials_load_failed = False
@@ -80,7 +88,7 @@ def _endpoint_url() -> str:
     )
 
 
-def _build_system_prompt(packages, astrologers, quick_replies) -> str:
+def _build_system_prompt(packages, astrologers, quick_replies, lang: str) -> str:
     grounding = {
         'packages': packages,
         'astrologers': [
@@ -115,7 +123,12 @@ def _build_system_prompt(packages, astrologers, quick_replies) -> str:
         "exactly one clear next step (not a list of options).\n"
         "- If the visitor's message is unrelated to astrology/consultations/booking, say "
         "you don't have information on that rather than guessing.\n\n"
-        f"Known packages and astrologers (JSON, use only this data):\n{json.dumps(grounding, ensure_ascii=False)}"
+        f"Known packages and astrologers (JSON, use only this data):\n{json.dumps(grounding, ensure_ascii=False)}\n\n"
+        f"IMPORTANT: the message you are replying to RIGHT NOW is written in "
+        f"{LANGUAGE_NAMES.get(lang, 'English')}. Reply in that exact language/script — "
+        "match the CURRENT message, not whatever language earlier turns in this "
+        "conversation happened to use. A user switching languages mid-conversation is "
+        "normal; always follow their latest message, never the conversation's earlier tone."
     )
 
 
@@ -144,7 +157,7 @@ def generate_reply(question: str, history, lang: str, packages, astrologers, qui
 
     payload = {
         'systemInstruction': {
-            'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies)}]
+            'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies, lang)}]
         },
         'contents': contents,
         'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 150},

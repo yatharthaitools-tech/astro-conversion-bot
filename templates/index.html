@@ -3,135 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AstroHelp Demo</title>
+    <title>AstroLokal — AI Assistant</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
-    <div class="app-shell">
-      <div class="app-frame">
-        <header class="topbar">
-          <div class="brand">
-            <img class="brand-mark" src="{{ url_for('static', filename='astro-logo.png') }}" alt="Astro logo" />
-            <div class="brand-text">AstroHelp</div>
-          </div>
+    <!-- Stand-in for the AstroLokal app screen the real chat webview opens
+         on top of — not part of the widget itself. -->
+    <div class="host-screen">
+      <div class="host-topbar">
+        <span class="host-brand">🕉️ AstroLokal</span>
+        <span class="host-coins">🪙 1500</span>
+      </div>
+      <div class="host-hint">Tap the sparkle button to open the AI assistant</div>
+    </div>
 
-          <div class="top-actions">
-            <span class="pill">Live demo</span>
-            <button class="secondary-btn">New conversation</button>
-            <button class="primary-btn">Book consult</button>
-          </div>
-        </header>
+    <button id="chatFab" class="chat-fab" type="button" aria-label="Open chat">✨</button>
 
-        <main class="layout-grid">
-          <section class="left-panel">
-            <div class="panel-section chat-only-panel">
-              <div class="chat-window">
-                <div class="chat-body" id="chatBody">
-                  {% for msg in messages %}
-                    <div class="message {{ msg.sender }}">{{ msg.text }}</div>
-                  {% endfor %}
-                </div>
+    <div id="chatOverlay" class="chat-overlay" hidden>
+      <div class="chat-modal" role="dialog" aria-label="Chat with AI Assistant">
+        <div class="chat-modal-header">
+          <div class="chat-modal-title"><span class="sparkle">✨</span> Chat with AI Assistant</div>
+          <button id="chatClose" class="chat-close" type="button" aria-label="Close chat">×</button>
+        </div>
 
-                <div class="quick-replies">
-                  {% for item in quick_replies %}
-                    <button class="quick-reply" type="button" data-text="{{ item }}">{{ item }}</button>
-                  {% endfor %}
-                </div>
+        <div class="chat-body" id="chatBody">
+          {% for msg in messages %}
+            <div class="message {{ msg.sender }}">{{ msg.text }}</div>
+          {% endfor %}
+        </div>
 
-                <div class="input-bar">
-                  <input id="chatInput" class="text-input" placeholder="Type your message..." />
-                  <button class="primary-btn" id="sendBtn">Send</button>
-                </div>
-              </div>
-            </div>
-          </section>
+        <div class="quick-replies" id="quickReplies">
+          {% for item in quick_replies %}
+            <button class="quick-reply" type="button" data-text="{{ item }}">{{ item }}</button>
+          {% endfor %}
+        </div>
 
-          <aside class="right-panel">
-            <div class="card-stack">
-              <div class="profile-card">
-                <div class="profile-header">
-                  <img class="avatar" src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80" alt="Customer profile" />
-                  <div>
-                    <h3>Priya Sharma</h3>
-                    <div class="rating">⭐ 4.9 customer sentiment</div>
-                  </div>
-                </div>
-
-                <div class="mini-card">
-                  <strong>Current need:</strong> Career clarity and job stability
-                </div>
-              </div>
-
-              <div class="profile-card">
-                <div class="section-head">
-                  <h3>Recommended astrologers</h3>
-                  <span class="pill">Top picks</span>
-                </div>
-
-                <div class="card-stack">
-                  {% for astrologer in astrologers %}
-                    <div class="package-card">
-                      <div style="display: flex; gap: 12px; align-items: center;">
-                        <img src="{{ astrologer.image }}" alt="{{ astrologer.name }}" class="avatar" style="width: 44px; height: 44px;" />
-                        <div>
-                          <strong>{{ astrologer.name }}</strong>
-                          <div style="font-size: 12px; color: rgba(27,27,27,0.7);">{{ astrologer.specialty }}</div>
-                          <div style="font-size: 12px; color: rgba(27,27,27,0.7);">{{ astrologer.experience }} • ⭐ {{ astrologer.rating }}</div>
-                        </div>
-                      </div>
-                      <div style="text-align: right;">
-                        <strong>{{ astrologer.price }}</strong>
-                        <div style="font-size: 12px; color: rgba(27,27,27,0.7);">{{ astrologer.availability }}</div>
-                      </div>
-                    </div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="profile-card">
-                <div class="section-head">
-                  <h3>Packages</h3>
-                  <button class="ghost-btn">View all</button>
-                </div>
-
-                <div class="package-list">
-                  {% for pkg in packages %}
-                    <div class="package-card">
-                      <div>
-                        <strong>{{ pkg.name }}</strong>
-                        <div style="color: rgba(27,27,27,0.7); margin-top: 6px;">{{ pkg.description }}</div>
-                      </div>
-                      <div style="font-weight: 700; color: var(--terracotta-dark);">{{ pkg.price }}</div>
-                    </div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="profile-card">
-                <div class="section-head">
-                  <h3>Open tickets</h3>
-                  <button class="ghost-btn">Track</button>
-                </div>
-
-                <div class="ticket-list">
-                  {% for ticket in tickets %}
-                    <div class="ticket-item">
-                      <div>
-                        <strong>{{ ticket.id }}</strong>
-                        <div style="color: rgba(27,27,27,0.7); margin-top: 4px;">{{ ticket.title }}</div>
-                        <div style="color: rgba(27,27,27,0.6); font-size: 12px; margin-top: 6px;">{{ ticket.updated_at }}</div>
-                      </div>
-                      <span class="badge {{ ticket.status.lower().replace(' ', '') }}">{{ ticket.status }}</span>
-                    </div>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-          </aside>
-        </main>
+        <div class="input-bar">
+          <input id="chatInput" class="text-input" placeholder="Type your message..." />
+          <button class="send-btn" id="sendBtn" type="button" aria-label="Send">➤</button>
+        </div>
       </div>
     </div>
 
