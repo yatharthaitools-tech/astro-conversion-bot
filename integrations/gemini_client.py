@@ -105,11 +105,14 @@ def _build_system_prompt(packages, astrologers, quick_replies) -> str:
         "— never ask which language to use, detect it.\n"
         "- Never invent a specific astrological prediction, date, or personal detail about "
         "the visitor. You are not doing the reading yourself — a real astrologer does that "
-        "in the paid consultation.\n"
+        "in the paid consultation. If the visitor asks a specific fortune/prediction "
+        "question (e.g. 'will I get married this year', 'what does my future hold'), don't "
+        "answer it at all — just say you'd like to connect them with the right astrologer for "
+        "that and ask if they'd like to proceed.\n"
         "- Only reference astrologers and packages from the data below. Never invent prices, "
         "names, or availability that isn't in it.\n"
-        "- Keep replies short (2-4 sentences), warm, and end with a clear next step "
-        "(book a consultation, pick a package, or ask a clarifying question).\n"
+        "- Use short, plain sentences — no paragraphs. One idea per message, ending with "
+        "exactly one clear next step (not a list of options).\n"
         "- If the visitor's message is unrelated to astrology/consultations/booking, say "
         "you don't have information on that rather than guessing.\n\n"
         f"Known packages and astrologers (JSON, use only this data):\n{json.dumps(grounding, ensure_ascii=False)}"
@@ -144,7 +147,7 @@ def generate_reply(question: str, history, lang: str, packages, astrologers, qui
             'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies)}]
         },
         'contents': contents,
-        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 300},
+        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 150},
         'labels': {'feature': GEMINI_BILLING_FEATURE},
     }
 

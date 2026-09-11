@@ -85,7 +85,60 @@ PRD_INTENTS = {
 
 NO_INFO = {
     'en': "I don't have information regarding that.",
-    'hi': "मुझे इसके बारे में जानकारी नहीं है।"
+    'hi': "मुझे इसके बारे में जानकारी नहीं है।",
+    'ta': "எனக்கு அதைப் பற்றி தகவல் இல்லை.",
+    'te': "దాని గురించి నాకు సమాచారం లేదు.",
+    'ml': "അതിനെക്കുറിച്ച് എനിക്ക് വിവരമില്ല.",
+}
+
+# Prediction/fortune questions are never answered directly — always deflected
+# into a connect-with-an-astrologer pitch (see is_prediction_intent() and the
+# /ask route). ta/te/ml keyword lists and messages below are a v1 heuristic
+# baseline, not reviewed by a native speaker — flag for review before launch.
+PREDICTION_KEYWORDS = {
+    'en': [
+        'will i', 'will my', 'when will i', 'when will my', 'what will happen',
+        'my future', 'prediction', "today's horoscope", 'horoscope for today',
+        'rashifal', 'lucky number', 'lucky colour', 'lucky color',
+        'auspicious time', 'shubh muhurat', 'shubh mahurat', 'fortune',
+        'when am i getting married', 'when will i get a job', 'my fate',
+    ],
+    'hi': [
+        'क्या होगा', 'भविष्य', 'भाग्य', 'कब होगी', 'कब मिलेगी', 'कब मिलेगा',
+        'राशिफल', 'मुहूर्त', 'कब शादी होगी', 'भविष्यफल',
+    ],
+    'ta': [
+        'எதிர்காலம்', 'ராசி பலன்', 'பலன் என்ன', 'எப்போது திருமணம்',
+    ],
+    'te': [
+        'భవిష్యత్తు', 'జాతకం', 'రాశిఫలం', 'ఎప్పుడు పెళ్ళి',
+    ],
+    'ml': [
+        'ഭാവി', 'ജാതകം', 'രാശിഫലം', 'എപ്പോൾ വിവാഹം',
+    ],
+}
+
+CONNECT_MESSAGES = {
+    'en': "I know just the right astrologer for this — want me to connect you?",
+    'hi': "मैं जानता हूँ इसके लिए सही ज्योतिषी कौन है — क्या आपको जोड़ूँ?",
+    'ta': "இதற்கு சரியான ஜோதிடரை எனக்குத் தெரியும் — உங்களை இணைக்கவா?",
+    'te': "దీనికి సరైన జ్యోతిష్కుడు నాకు తెలుసు — మిమ్మల్ని కనెక్ట్ చేయనా?",
+    'ml': "ഇതിന് ശരിയായ ജ്യോതിഷിയെ എനിക്കറിയാം — നിങ്ങളെ ബന്ധിപ്പിക്കട്ടെ?",
+}
+
+CONNECT_LABELS = {
+    'en': "Connect now",
+    'hi': "अभी जोड़ें",
+    'ta': "இப்போது இணைக்க",
+    'te': "ఇప్పుడు కనెక్ట్ చేయండి",
+    'ml': "ഇപ്പോൾ ബന്ധിപ്പിക്കുക",
+}
+
+CATEGORY_TO_ASTROLOGER_NAME = {
+    'love': 'Astro Seema',
+    'career': 'Vikram Joshi',
+    'finance': 'Vikram Joshi',
+    'marriage': 'Mira Nair',
 }
 
 quick_replies = [
@@ -162,16 +215,47 @@ stats = {
 
 
 def normalize_text(text: str) -> str:
+    # \w doesn't match Indic combining vowel signs/virama (Unicode category
+    # Mc/Mn, e.g. Tamil \u0bbf/\u0bcd, Devanagari \u093f/\u094d) \u2014 without whitelisting each
+    # script's full block explicitly, words in these scripts get shredded
+    # into fragments and keyword matching silently breaks.
     value = text.lower().strip()
-    value = re.sub(r'[^\w\s\u0900-\u097f]', ' ', value)
+    value = re.sub(r'[^\w\s\u0900-\u097f\u0b80-\u0bff\u0c00-\u0c7f\u0d00-\u0d7f]', ' ', value)
     value = re.sub(r'\s+', ' ', value)
     return value.strip()
 
 
 def detect_language(text: str) -> str:
+    """Detected per-message (not cached per session) so mid-conversation
+    language switches are followed naturally, per the launch language set
+    (hi/en/ta/te/ml). Anything else falls through to 'en' for rule-based
+    strings, but Gemini's own prompt still replies natively in whatever
+    script it actually sees.
+    """
     if re.search(r'[\u0900-\u097F]', text):
         return 'hi'
+    if re.search(r'[\u0B80-\u0BFF]', text):
+        return 'ta'
+    if re.search(r'[\u0C00-\u0C7F]', text):
+        return 'te'
+    if re.search(r'[\u0D00-\u0D7F]', text):
+        return 'ml'
     return 'en'
+
+
+def is_prediction_intent(question: str, lang: str) -> bool:
+    normalized = normalize_text(question)
+    keywords = PREDICTION_KEYWORDS.get(lang, PREDICTION_KEYWORDS['en'])
+    return any(keyword in normalized for keyword in keywords)
+
+
+def pick_astrologer_for_intent(intent):
+    name = CATEGORY_TO_ASTROLOGER_NAME.get(intent)
+    if name:
+        for astrologer in astrologers:
+            if astrologer['name'] == name:
+                return astrologer
+    return astrologers[0]
 
 
 def map_intent(question: str):
@@ -233,14 +317,28 @@ def ask():
 
     lang = detect_language(question)
     intent = map_intent(question)
+    action = None
 
-    answer = gemini_client.generate_reply(
-        question, history, lang, packages, astrologers, quick_replies
-    )
-    source = 'gemini'
-    if not answer:
-        answer = rule_based_answer(question, lang, intent)
-        source = 'rule_based'
+    if is_prediction_intent(question, lang):
+        # Never let a prediction/fortune question reach Gemini or the
+        # rule-based answers at all — deflect before either runs, same
+        # code-level gate pattern astrohelp uses for its hard rules.
+        answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
+        source = 'prediction_deflect'
+        astrologer = pick_astrologer_for_intent(intent)
+        action = {
+            'type': 'connect_popup',
+            'label': CONNECT_LABELS.get(lang, CONNECT_LABELS['en']),
+            'astrologer': astrologer,
+        }
+    else:
+        answer = gemini_client.generate_reply(
+            question, history, lang, packages, astrologers, quick_replies
+        )
+        source = 'gemini'
+        if not answer:
+            answer = rule_based_answer(question, lang, intent)
+            source = 'rule_based'
 
     s3_client.log_event({
         'session_id': session_id,
@@ -250,9 +348,16 @@ def ask():
         'intent': intent,
         'source': source,
         'lead': intent in LEAD_INTENTS,
+        'prediction_deflected': source == 'prediction_deflect',
     })
 
-    return jsonify({'answer': answer, 'session_id': session_id, 'source': source})
+    return jsonify({
+        'answer': answer,
+        'session_id': session_id,
+        'source': source,
+        'language': lang,
+        'action': action,
+    })
 
 
 if __name__ == '__main__':

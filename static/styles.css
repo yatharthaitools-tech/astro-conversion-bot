@@ -313,6 +313,17 @@ h1, h2, h3, h4 {
 .badge.open { background: rgba(79,125,106,0.12); color: #2d5e4f; }
 .badge.resolved { background: rgba(52,87,135,0.12); color: #275380; }
 
+.connect-action {
+  align-self: flex-start;
+  margin-left: 4px;
+  font-weight: 600;
+}
+.connect-highlight {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 2px;
+  transition: outline-color 0.2s ease;
+}
+
 @media (min-width: 768px) {
   .app-shell {
     padding: 24px;

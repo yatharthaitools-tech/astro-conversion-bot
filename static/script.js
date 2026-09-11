@@ -48,10 +48,38 @@ async function sendMessage() {
 
     const data = await response.json();
     const answer = data.answer || "I don't have information regarding that.";
-    setTimeout(() => appendMessage('bot', answer), 250);
+    setTimeout(() => {
+      appendMessage('bot', answer);
+      if (data.action && data.action.type === 'connect_popup') {
+        renderConnectAction(data.action);
+      }
+    }, 250);
   } catch (error) {
     setTimeout(() => appendMessage('bot', "I don't have information regarding that."), 250);
   }
+}
+
+// Stub for Step 5's "existing recommend-astrologer flow" hand-off — this repo
+// has no such system to call into, so this just surfaces the entry point:
+// scroll the astrologer already picked server-side into view and highlight it.
+function renderConnectAction(action) {
+  const btn = document.createElement('button');
+  btn.className = 'quick-reply connect-action';
+  btn.type = 'button';
+  btn.textContent = action.label;
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    const cards = document.querySelectorAll('.right-panel .package-card strong');
+    const match = Array.from(cards).find((el) => el.textContent === action.astrologer?.name);
+    const card = match ? match.closest('.package-card') : null;
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('connect-highlight');
+      setTimeout(() => card.classList.remove('connect-highlight'), 2000);
+    }
+  });
+  chatBody.appendChild(btn);
+  chatBody.scrollTop = chatBody.scrollHeight;
 }
 
 sendButton.addEventListener('click', sendMessage);
