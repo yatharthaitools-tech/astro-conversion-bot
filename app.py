@@ -2,13 +2,19 @@ import os
 import re
 import uuid
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, url_for
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
 from integrations import gemini_client, s3_client
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
+
+UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 PRD_INTENTS = {
     'general_guidance': {
@@ -136,12 +142,12 @@ CONNECT_LABELS = {
 
 
 quick_replies = [
-    'Love guidance',
-    'Career advice',
-    'Marriage compatibility',
-    'Kundali reading',
-    'Finance forecast',
-    'Book a consultation',
+    "I'm anxious about my future",
+    "Marriage isn't happening",
+    "Facing money problems",
+    "Relationship isn't working out",
+    "Career feels stuck",
+    "Just want to talk to someone",
 ]
 
 messages = []
@@ -287,6 +293,22 @@ def home():
         quick_replies=quick_replies,
         messages=messages,
     )
+
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'error': 'No file provided'}), 400
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        return jsonify({'error': 'Unsupported file type'}), 400
+
+    safe_name = f"{uuid.uuid4().hex}.{ext}"
+    file.save(os.path.join(UPLOAD_FOLDER, secure_filename(safe_name)))
+
+    return jsonify({'url': url_for('static', filename=f'uploads/{safe_name}')})
 
 
 @app.route('/ask', methods=['POST'])

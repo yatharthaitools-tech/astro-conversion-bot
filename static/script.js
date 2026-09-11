@@ -1,25 +1,10 @@
 const chatInput = document.getElementById('chatInput');
 const sendButton = document.getElementById('sendBtn');
 const chatBody = document.getElementById('chatBody');
-const chatFab = document.getElementById('chatFab');
-const chatOverlay = document.getElementById('chatOverlay');
-const chatClose = document.getElementById('chatClose');
+const photoBtn = document.getElementById('photoBtn');
+const photoInput = document.getElementById('photoInput');
 
 const welcomeMessage = "Hello! I can help with love, career, finance, marriage, or kundali guidance. Ask me about consultations, packages, or booking support.";
-
-function openChat() {
-  chatOverlay.hidden = false;
-  chatFab.hidden = true;
-  chatInput.focus();
-}
-
-function closeChat() {
-  chatOverlay.hidden = true;
-  chatFab.hidden = false;
-}
-
-chatFab.addEventListener('click', openChat);
-chatClose.addEventListener('click', closeChat);
 
 function getSessionId() {
   let sessionId = sessionStorage.getItem('astro_session_id');
@@ -39,19 +24,28 @@ function appendMessage(sender, text) {
   chatBody.appendChild(msg);
   chatBody.scrollTop = chatBody.scrollHeight;
   history.push({ sender, text });
+  return msg;
+}
+
+function appendImageMessage(sender, url) {
+  const msg = document.createElement('div');
+  msg.className = `message ${sender} photo-message`;
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = 'Uploaded photo';
+  msg.appendChild(img);
+  chatBody.appendChild(msg);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  // No vision analysis on our side — this just threads a text marker into
+  // history so the bot's reply at least knows a photo was shared.
+  history.push({ sender, text: `[Shared a photo: ${url}]` });
 }
 
 if (chatBody && chatBody.children.length === 0) {
   appendMessage('bot', welcomeMessage);
 }
 
-async function sendMessage() {
-  const text = (chatInput.value || '').trim();
-  if (!text) return;
-
-  appendMessage('user', text);
-  chatInput.value = '';
-
+async function sendToBot(text) {
   try {
     const response = await fetch('/ask', {
       method: 'POST',
@@ -73,6 +67,30 @@ async function sendMessage() {
     }, 250);
   } catch (error) {
     setTimeout(() => appendMessage('bot', "I don't have information regarding that."), 250);
+  }
+}
+
+async function sendMessage() {
+  const text = (chatInput.value || '').trim();
+  if (!text) return;
+
+  appendMessage('user', text);
+  chatInput.value = '';
+  await sendToBot(text);
+}
+
+async function handlePhotoUpload(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await response.json();
+    if (!data.url) throw new Error('upload failed');
+    appendImageMessage('user', data.url);
+    await sendToBot("I just shared a photo — can you connect me with someone for a face or palm reading based on it?");
+  } catch (error) {
+    appendMessage('bot', "Sorry, I couldn't upload that photo — please try again.");
   }
 }
 
@@ -122,6 +140,13 @@ function renderConnectCard(action) {
 sendButton.addEventListener('click', sendMessage);
 chatInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') sendMessage();
+});
+
+photoBtn.addEventListener('click', () => photoInput.click());
+photoInput.addEventListener('change', () => {
+  const file = photoInput.files[0];
+  photoInput.value = '';
+  if (file) handlePhotoUpload(file);
 });
 
 document.querySelectorAll('.quick-reply').forEach((button) => {

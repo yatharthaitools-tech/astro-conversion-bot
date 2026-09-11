@@ -10,41 +10,28 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
-    <!-- Stand-in for the AstroLokal app screen the real chat webview opens
-         on top of — not part of the widget itself. -->
-    <div class="host-screen">
-      <div class="host-topbar">
-        <span class="host-brand">🕉️ AstroLokal</span>
-        <span class="host-coins">🪙 1500</span>
+    <div class="chat-modal" role="dialog" aria-label="Chat with AI Assistant">
+      <div class="chat-modal-header">
+        <div class="chat-modal-title"><span class="sparkle">✨</span> Chat with AI Assistant</div>
       </div>
-      <div class="host-hint">Tap the sparkle button to open the AI assistant</div>
-    </div>
 
-    <button id="chatFab" class="chat-fab" type="button" aria-label="Open chat">✨</button>
+      <div class="chat-body" id="chatBody">
+        {% for msg in messages %}
+          <div class="message {{ msg.sender }}">{{ msg.text }}</div>
+        {% endfor %}
+      </div>
 
-    <div id="chatOverlay" class="chat-overlay" hidden>
-      <div class="chat-modal" role="dialog" aria-label="Chat with AI Assistant">
-        <div class="chat-modal-header">
-          <div class="chat-modal-title"><span class="sparkle">✨</span> Chat with AI Assistant</div>
-          <button id="chatClose" class="chat-close" type="button" aria-label="Close chat">×</button>
-        </div>
+      <div class="quick-replies" id="quickReplies">
+        {% for item in quick_replies %}
+          <button class="quick-reply" type="button" data-text="{{ item }}">{{ item }}</button>
+        {% endfor %}
+      </div>
 
-        <div class="chat-body" id="chatBody">
-          {% for msg in messages %}
-            <div class="message {{ msg.sender }}">{{ msg.text }}</div>
-          {% endfor %}
-        </div>
-
-        <div class="quick-replies" id="quickReplies">
-          {% for item in quick_replies %}
-            <button class="quick-reply" type="button" data-text="{{ item }}">{{ item }}</button>
-          {% endfor %}
-        </div>
-
-        <div class="input-bar">
-          <input id="chatInput" class="text-input" placeholder="Type your message..." />
-          <button class="send-btn" id="sendBtn" type="button" aria-label="Send">➤</button>
-        </div>
+      <div class="input-bar">
+        <button class="photo-btn" id="photoBtn" type="button" aria-label="Upload photo">📷</button>
+        <input id="photoInput" type="file" accept="image/*" hidden />
+        <input id="chatInput" class="text-input" placeholder="Type your message..." />
+        <button class="send-btn" id="sendBtn" type="button" aria-label="Send">➤</button>
       </div>
     </div>
 

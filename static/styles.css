@@ -16,91 +16,25 @@ html, body {
   height: 100%;
   font-family: 'Inter', sans-serif;
   color: var(--ink);
-}
-button, input { font: inherit; }
-
-/* --- Host screen: stand-in for the real AstroLokal app behind the widget --- */
-.host-screen {
-  min-height: 100vh;
-  background: linear-gradient(165deg, #ffc79a 0%, #ff9a56 45%, #ff6f3d 100%);
-  display: flex;
-  flex-direction: column;
-}
-.host-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  color: white;
-  font-family: 'Playfair Display', serif;
-  font-weight: 700;
-  font-size: 1.15rem;
-}
-.host-coins {
-  font-family: 'Inter', sans-serif;
-  font-size: 0.9rem;
-  background: rgba(255, 255, 255, 0.22);
-  padding: 6px 12px;
-  border-radius: 999px;
-}
-.host-hint {
-  flex: 1;
+  background: var(--cream);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.9rem;
-  text-align: center;
-  padding: 0 24px;
 }
+button, input { font: inherit; }
 
-/* --- Floating action button --- */
-.chat-fab {
-  position: fixed;
-  right: 20px;
-  bottom: 24px;
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  border: none;
-  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
-  color: white;
-  font-size: 1.5rem;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-  z-index: 50;
-  transition: transform 0.15s ease;
-}
-.chat-fab:hover { transform: scale(1.06); }
-
-/* --- Modal overlay: a positioned card, not a full-screen takeover --- */
-.chat-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 20px;
-  pointer-events: none;
-}
-.chat-overlay[hidden] { display: none; }
-.chat-overlay:not([hidden]) { pointer-events: auto; }
-
+/* This page IS the chat widget — no host-app backdrop, no FAB, no toggle.
+   Still styled like a "modal" card (rounded, shadowed) per the design
+   request, just always shown rather than opened/closed. */
 .chat-modal {
-  width: min(400px, 100%);
-  height: min(600px, 82vh);
+  width: min(420px, 100vw);
+  height: min(680px, 100vh);
   background: var(--cream);
   border-radius: var(--radius);
-  box-shadow: 0 24px 60px rgba(42, 28, 20, 0.28);
+  box-shadow: 0 24px 60px rgba(42, 28, 20, 0.18);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: chat-pop 0.18s ease-out;
-}
-@keyframes chat-pop {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .chat-modal-header {
@@ -119,18 +53,6 @@ button, input { font: inherit; }
   gap: 8px;
 }
 .chat-modal-title .sparkle { color: var(--sun-dark); }
-.chat-close {
-  border: none;
-  background: rgba(42, 28, 20, 0.06);
-  color: var(--ink);
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-}
-.chat-close:hover { background: rgba(42, 28, 20, 0.12); }
 
 .chat-body {
   flex: 1;
@@ -187,6 +109,17 @@ button, input { font: inherit; }
   border-top: 1px solid var(--line);
   background: white;
 }
+.photo-btn {
+  border: 1px solid var(--line);
+  background: var(--cream);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.photo-btn:hover { background: rgba(255, 111, 61, 0.1); }
 .text-input {
   flex: 1;
   border: 1px solid var(--line);
@@ -253,12 +186,17 @@ button, input { font: inherit; }
 }
 .connect-card .connect-btn:disabled { opacity: 0.6; cursor: default; }
 
+.photo-message img {
+  max-width: 60%;
+  border-radius: 14px;
+  display: block;
+}
+
 @media (max-width: 480px) {
-  .chat-overlay { padding: 0; align-items: flex-end; justify-content: stretch; }
+  html, body { display: block; }
   .chat-modal {
     width: 100%;
-    height: min(78vh, 640px);
-    border-radius: var(--radius) var(--radius) 0 0;
+    height: 100vh;
+    border-radius: 0;
   }
-  .chat-fab { right: 16px; bottom: 16px; }
 }
