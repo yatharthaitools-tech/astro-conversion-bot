@@ -252,6 +252,29 @@ def pick_available_astrologer():
     return astrologers[0]
 
 
+def find_named_astrologer(text: str):
+    """Looks for one of our real astrologers' names in the given text.
+
+    Used two ways: on the user's own message (they asked for someone by
+    name — that's their explicit choice, always wins) and on Gemini's
+    answer text (so the connect card shown matches whoever the reply
+    actually named, instead of a generic pick that could disagree with it).
+    """
+    normalized = normalize_text(text)
+    for astrologer in astrologers:
+        if astrologer['name'].lower() in normalized:
+            return astrologer
+    return None
+
+
+def build_connect_action(lang: str, astrologer) -> dict:
+    return {
+        'type': 'connect_popup',
+        'label': CONNECT_LABELS.get(lang, CONNECT_LABELS['en']),
+        'astrologer': astrologer,
+    }
+
+
 def map_intent(question: str):
     normalized = normalize_text(question)
     best_intent = None
@@ -324,6 +347,7 @@ def ask():
     lang = detect_language(question)
     intent = map_intent(question)
     action = None
+    named_astrologer = find_named_astrologer(question)
 
     if is_prediction_intent(question, lang):
         # Never let a prediction/fortune question reach Gemini or the
@@ -331,12 +355,7 @@ def ask():
         # code-level gate pattern astrohelp uses for its hard rules.
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
-        astrologer = pick_available_astrologer()
-        action = {
-            'type': 'connect_popup',
-            'label': CONNECT_LABELS.get(lang, CONNECT_LABELS['en']),
-            'astrologer': astrologer,
-        }
+        action = build_connect_action(lang, named_astrologer or pick_available_astrologer())
     else:
         answer = gemini_client.generate_reply(
             question, history, lang, packages, astrologers, quick_replies
@@ -345,6 +364,20 @@ def ask():
         if not answer:
             answer = rule_based_answer(question, lang, intent)
             source = 'rule_based'
+
+        # Conversion-first: the goal is to get the visitor connected, not to
+        # keep chatting. Attach a connect CTA to almost every substantive
+        # reply — the user's own explicit astrologer request always wins
+        # ("their own button"), otherwise prefer whoever the reply itself
+        # named (keeps the card consistent with the text), falling back to
+        # any available astrologer for any other recognized concern. Only a
+        # genuinely off-topic NO_INFO reply (no intent, nobody named) skips
+        # the CTA — there's nothing to convert on there.
+        cta_astrologer = named_astrologer or find_named_astrologer(answer)
+        if not cta_astrologer and intent is not None:
+            cta_astrologer = pick_available_astrologer()
+        if cta_astrologer:
+            action = build_connect_action(lang, cta_astrologer)
 
     s3_client.log_event({
         'session_id': session_id,
