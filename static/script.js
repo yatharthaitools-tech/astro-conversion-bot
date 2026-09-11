@@ -88,7 +88,13 @@ async function handlePhotoUpload(file) {
     const data = await response.json();
     if (!data.url) throw new Error('upload failed');
     appendImageMessage('user', data.url);
-    await sendToBot("I just shared a photo — can you connect me with someone for a face or palm reading based on it?");
+    // The marker also needs to be in the outgoing question text itself, not
+    // just history — sendToBot's history payload excludes the message
+    // currently being sent (history.slice(0, -1)), so a marker only pushed
+    // via appendImageMessage would never actually reach the backend for
+    // THIS turn. Embedding it here too means find_last_attachment_url()
+    // can find it either way.
+    await sendToBot(`I just shared a photo — can you connect me with someone for a face or palm reading based on it? [Shared a photo: ${data.url}]`);
   } catch (error) {
     appendMessage('bot', "Sorry, I couldn't upload that photo — please try again.");
   }
