@@ -1,6 +1,12 @@
 import os
 import re
+import uuid
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+
+load_dotenv()
+
+from integrations import gemini_client, s3_client
 
 app = Flask(__name__)
 
@@ -187,12 +193,19 @@ def map_intent(question: str):
     return None
 
 
-def generate_answer(question: str) -> str:
-    lang = detect_language(question)
-    intent = map_intent(question)
+LEAD_INTENTS = {'consultation_request', 'package_selection', 'booking_flow'}
+
+
+def rule_based_answer(question: str, lang: str, intent) -> str:
     if not intent:
         return NO_INFO[lang]
     return PRD_INTENTS[intent]['answers'][lang]
+
+
+def generate_answer(question: str) -> str:
+    lang = detect_language(question)
+    intent = map_intent(question)
+    return rule_based_answer(question, lang, intent)
 
 
 @app.route('/')
@@ -212,9 +225,34 @@ def home():
 def ask():
     payload = request.get_json(silent=True) or {}
     question = str(payload.get('question', '')).strip()
+    session_id = str(payload.get('session_id') or uuid.uuid4())
+    history = payload.get('history') or []
+
     if not question:
-        return jsonify({'answer': NO_INFO['en']}), 400
-    return jsonify({'answer': generate_answer(question)})
+        return jsonify({'answer': NO_INFO['en'], 'session_id': session_id}), 400
+
+    lang = detect_language(question)
+    intent = map_intent(question)
+
+    answer = gemini_client.generate_reply(
+        question, history, lang, packages, astrologers, quick_replies
+    )
+    source = 'gemini'
+    if not answer:
+        answer = rule_based_answer(question, lang, intent)
+        source = 'rule_based'
+
+    s3_client.log_event({
+        'session_id': session_id,
+        'question': question,
+        'answer': answer,
+        'language': lang,
+        'intent': intent,
+        'source': source,
+        'lead': intent in LEAD_INTENTS,
+    })
+
+    return jsonify({'answer': answer, 'session_id': session_id, 'source': source})
 
 
 if __name__ == '__main__':

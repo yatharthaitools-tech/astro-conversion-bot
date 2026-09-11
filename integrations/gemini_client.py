@@ -1,0 +1,166 @@
+"""Gemini-backed reply generation, via Vertex AI (service-account auth).
+
+Matches astrohelp's approach: a GCP service-account JSON, not a plain API
+key. Gated entirely by GEMINI_VERTEX_CREDENTIALS_JSON: when it's unset or
+fails to parse, every function here is a no-op and app.py falls back to the
+rule-based responder. Nothing else in the app requires real credentials.
+
+The credentials JSON itself is read only from the environment — never
+hardcode it here, and never commit a real value into GEMINI_VERTEX_CREDENTIALS_JSON
+in any tracked file (this repo is public).
+"""
+import json
+import logging
+import os
+
+import requests
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2 import service_account
+
+logger = logging.getLogger(__name__)
+
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash-001')
+GOOGLE_CLOUD_LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'global')
+GEMINI_BILLING_FEATURE = os.environ.get('GEMINI_BILLING_FEATURE', 'astro_conversion_bot')
+REQUEST_TIMEOUT_SECONDS = 15
+
+_SCOPES = ['https://www.googleapis.com/auth/cloud-platform']
+
+_credentials = None
+_project_id = None
+_credentials_load_failed = False
+
+
+def _load_credentials():
+    """Parses GEMINI_VERTEX_CREDENTIALS_JSON and builds credentials once.
+
+    Caches failure too, so a bad/missing value doesn't retry JSON parsing
+    on every request.
+    """
+    global _credentials, _project_id, _credentials_load_failed
+
+    if _credentials is not None or _credentials_load_failed:
+        return
+
+    raw = os.environ.get('GEMINI_VERTEX_CREDENTIALS_JSON', '')
+    if not raw:
+        _credentials_load_failed = True
+        return
+
+    try:
+        info = json.loads(raw)
+        _credentials = service_account.Credentials.from_service_account_info(
+            info, scopes=_SCOPES
+        )
+        _project_id = info['project_id']
+    except (json.JSONDecodeError, KeyError, ValueError) as exc:
+        logger.warning('Failed to parse GEMINI_VERTEX_CREDENTIALS_JSON: %s', exc)
+        _credentials_load_failed = True
+
+
+def is_configured() -> bool:
+    _load_credentials()
+    return _credentials is not None
+
+
+def _get_access_token() -> str:
+    if not _credentials.valid:
+        _credentials.refresh(GoogleAuthRequest())
+    return _credentials.token
+
+
+def _endpoint_url() -> str:
+    if GOOGLE_CLOUD_LOCATION == 'global':
+        host = 'aiplatform.googleapis.com'
+    else:
+        host = f'{GOOGLE_CLOUD_LOCATION}-aiplatform.googleapis.com'
+    return (
+        f'https://{host}/v1/projects/{_project_id}/locations/{GOOGLE_CLOUD_LOCATION}'
+        f'/publishers/google/models/{GEMINI_MODEL}:generateContent'
+    )
+
+
+def _build_system_prompt(packages, astrologers, quick_replies) -> str:
+    grounding = {
+        'packages': packages,
+        'astrologers': [
+            {
+                'name': a['name'],
+                'specialty': a['specialty'],
+                'price': a['price'],
+                'availability': a['availability'],
+            }
+            for a in astrologers
+        ],
+        'quick_replies': quick_replies,
+    }
+    return (
+        "You are the AstroHelp conversion assistant, a chat widget on an astrology "
+        "consultation website. Your job is to help a visitor with their concern "
+        "(love, career, marriage, finance, kundali, general guidance) and guide them "
+        "toward booking a paid consultation or the right package.\n\n"
+        "Rules:\n"
+        "- Reply in whatever language and script the visitor just typed in (Hindi in "
+        "Devanagari gets Hindi in Devanagari, Hinglish gets Hinglish, English gets English) "
+        "— never ask which language to use, detect it.\n"
+        "- Never invent a specific astrological prediction, date, or personal detail about "
+        "the visitor. You are not doing the reading yourself — a real astrologer does that "
+        "in the paid consultation.\n"
+        "- Only reference astrologers and packages from the data below. Never invent prices, "
+        "names, or availability that isn't in it.\n"
+        "- Keep replies short (2-4 sentences), warm, and end with a clear next step "
+        "(book a consultation, pick a package, or ask a clarifying question).\n"
+        "- If the visitor's message is unrelated to astrology/consultations/booking, say "
+        "you don't have information on that rather than guessing.\n\n"
+        f"Known packages and astrologers (JSON, use only this data):\n{json.dumps(grounding, ensure_ascii=False)}"
+    )
+
+
+def _history_to_contents(history):
+    contents = []
+    for turn in history or []:
+        sender = turn.get('sender') or turn.get('role')
+        text = (turn.get('text') or '').strip()
+        if not text:
+            continue
+        role = 'model' if sender == 'bot' else 'user'
+        contents.append({'role': role, 'parts': [{'text': text}]})
+    return contents
+
+
+def generate_reply(question: str, history, lang: str, packages, astrologers, quick_replies):
+    """Returns a reply string, or None if Vertex AI is unconfigured/unavailable.
+
+    Never raises — callers fall back to the rule-based responder on None.
+    """
+    if not is_configured():
+        return None
+
+    contents = _history_to_contents(history)
+    contents.append({'role': 'user', 'parts': [{'text': question}]})
+
+    payload = {
+        'systemInstruction': {
+            'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies)}]
+        },
+        'contents': contents,
+        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 300},
+        'labels': {'feature': GEMINI_BILLING_FEATURE},
+    }
+
+    try:
+        token = _get_access_token()
+        response = requests.post(
+            _endpoint_url(),
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json=payload,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        data = response.json()
+        parts = data['candidates'][0]['content']['parts']
+        text = ''.join(part.get('text', '') for part in parts).strip()
+        return text or None
+    except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
+        logger.warning('Vertex AI reply generation failed, falling back to rule-based: %s', exc)
+        return None
