@@ -338,6 +338,10 @@ def map_intent(question: str):
 
 LEAD_INTENTS = {'consultation_request', 'package_selection', 'booking_flow'}
 
+# At least this many user turns happen before a connect CTA shows (for
+# general concerns — an explicit "connect me with X" always bypasses this).
+MIN_TURNS_BEFORE_CTA = 3
+
 
 def rule_based_answer(question: str, lang: str, intent) -> str:
     if not intent:
@@ -391,30 +395,40 @@ def ask():
     action = None
     named_astrologer = find_named_astrologer(question)
 
+    # Turn 1 counting this message. A little conversational warmth before
+    # the hard sell — the CTA only shows from MIN_TURNS_BEFORE_CTA onward,
+    # never on the very first message. An explicit request for someone by
+    # name always bypasses this (that's the visitor driving, not us).
+    turn_number = 1 + sum(1 for turn in history if (turn.get('sender') or turn.get('role')) == 'user')
+    past_warmup = turn_number >= MIN_TURNS_BEFORE_CTA
+
     if is_prediction_intent(question, lang):
         # Never let a prediction/fortune question reach Gemini or the
         # rule-based answers at all — deflect before either runs, same
-        # code-level gate pattern astrohelp uses for its hard rules.
+        # code-level gate pattern astrohelp uses for its hard rules. This
+        # one always shows the CTA immediately — it's a redirect, not a
+        # concern to build rapport around first.
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
         action = build_connect_action(lang, named_astrologer)
     else:
         answer = gemini_client.generate_reply(
-            question, history, lang, packages, astrologers, quick_replies
+            question, history, lang, packages, astrologers, quick_replies, turn_number, past_warmup
         )
         source = 'gemini'
         if not answer:
             answer = rule_based_answer(question, lang, intent)
             source = 'rule_based'
 
-        # Conversion-first: the goal is to get the visitor connected, not to
-        # keep chatting. Attach a connect CTA to almost every substantive
-        # reply about a real concern — but matching is the real app's job,
+        # Conversion-first, but not cold: the goal is still to get the
+        # visitor connected, not to keep chatting indefinitely — but the
+        # CTA is withheld for the first couple of turns so it doesn't feel
+        # like a hard sell on message one. Matching is the real app's job,
         # not this bot's, so the card stays generic (no name/photo) unless
         # the visitor asked for someone specific themselves. A genuinely
         # off-topic NO_INFO reply (no recognized intent) skips the CTA
         # entirely — there's nothing to convert on there.
-        if named_astrologer or intent is not None:
+        if named_astrologer or (intent is not None and past_warmup):
             action = build_connect_action(lang, named_astrologer)
 
     s3_client.log_event({

@@ -88,7 +88,7 @@ def _endpoint_url() -> str:
     )
 
 
-def _build_system_prompt(packages, astrologers, quick_replies, lang: str) -> str:
+def _build_system_prompt(packages, astrologers, quick_replies, lang: str, turn_number: int, past_warmup: bool) -> str:
     grounding = {
         'packages': packages,
         'astrologers': [
@@ -128,14 +128,24 @@ def _build_system_prompt(packages, astrologers, quick_replies, lang: str) -> str
         "the paid session, not you for free beforehand.\n"
         "- Matching the visitor to a specific astrologer is NOT your job — a separate system "
         "handles that. So do NOT name a specific astrologer from the data below UNLESS the "
-        "visitor explicitly asked for that person by name themselves. Otherwise, in almost "
-        "every reply about a real concern (love/career/marriage/finance/kundali/general "
-        "guidance), refer to 'our top-rated astrologer' or 'a trusted, highly experienced "
-        "specialist' generically and end by inviting them to connect now — don't just "
-        "explain, always point at a next step. Make it sound exclusive and premium, like a "
-        "hand-picked match reserved just for them, not a generic queue — but never invent "
-        "specific stats (years, ratings) that aren't in the data below.\n"
-        "- If the visitor's message is unrelated to astrology/consultations/booking, say "
+        "visitor explicitly asked for that person by name themselves. Otherwise refer to "
+        "'our top-rated astrologer' or 'a trusted, highly experienced specialist' "
+        "generically — never invent specific stats (years, ratings) that aren't in the data "
+        "below.\n"
+        + (
+            f"- This is turn {turn_number} of the conversation. Turns 1-2 are a warmup "
+            f"period (connecting only starts from turn 3 onward), so turn {turn_number} is "
+            "STILL WARMUP: this reply must NOT contain the words 'connect', 'astrologer', "
+            "'book', or any invitation at all — no exceptions, even if the conversation "
+            "already feels far along. Just respond like a warm, curious friend: acknowledge "
+            "what they said, show empathy, optionally ask one short question. Nothing about "
+            "next steps belongs in a warmup-turn reply.\n"
+            if not past_warmup else
+            "- Enough back-and-forth has happened — now end by inviting them to connect with "
+            "our top-rated astrologer, don't just explain. Make it sound exclusive and "
+            "premium, like a hand-picked match reserved just for them, not a generic queue.\n"
+        )
+        + "- If the visitor's message is unrelated to astrology/consultations/booking, say "
         "you don't have information on that rather than guessing.\n\n"
         f"Known packages and astrologers (JSON, use only this data):\n{json.dumps(grounding, ensure_ascii=False)}\n\n"
         f"IMPORTANT: the message you are replying to RIGHT NOW is written in "
@@ -158,7 +168,7 @@ def _history_to_contents(history):
     return contents
 
 
-def generate_reply(question: str, history, lang: str, packages, astrologers, quick_replies):
+def generate_reply(question: str, history, lang: str, packages, astrologers, quick_replies, turn_number: int = 99, past_warmup: bool = True):
     """Returns a reply string, or None if Vertex AI is unconfigured/unavailable.
 
     Never raises — callers fall back to the rule-based responder on None.
@@ -171,7 +181,7 @@ def generate_reply(question: str, history, lang: str, packages, astrologers, qui
 
     payload = {
         'systemInstruction': {
-            'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies, lang)}]
+            'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies, lang, turn_number, past_warmup)}]
         },
         'contents': contents,
         'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 150},
