@@ -4,12 +4,24 @@ const chatBody = document.getElementById('chatBody');
 
 const welcomeMessage = "Hello! I can help with love, career, finance, marriage, or kundali guidance. Ask me about consultations, packages, or booking support.";
 
+function getSessionId() {
+  let sessionId = sessionStorage.getItem('astro_session_id');
+  if (!sessionId) {
+    sessionId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    sessionStorage.setItem('astro_session_id', sessionId);
+  }
+  return sessionId;
+}
+
+const history = [];
+
 function appendMessage(sender, text) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   msg.textContent = text;
   chatBody.appendChild(msg);
   chatBody.scrollTop = chatBody.scrollHeight;
+  history.push({ sender, text });
 }
 
 if (chatBody && chatBody.children.length === 0) {
@@ -27,7 +39,11 @@ async function sendMessage() {
     const response = await fetch('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: text })
+      body: JSON.stringify({
+        question: text,
+        session_id: getSessionId(),
+        history: history.slice(0, -1)
+      })
     });
 
     const data = await response.json();
