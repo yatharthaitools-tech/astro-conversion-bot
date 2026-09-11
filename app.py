@@ -140,6 +140,33 @@ CONNECT_LABELS = {
     'ml': "ഇപ്പോൾ ബന്ധിപ്പിക്കുക",
 }
 
+# The default connect card never names a specific astrologer — matching is
+# owned by the real app's own matching system, not this bot (see
+# build_connect_action()). Only revealed when the visitor names someone
+# themselves. ta/te/ml text is a v1 heuristic, not native-reviewed.
+GENERIC_CARD_TEXT = {
+    'en': {
+        'title': "Our Top-Rated Astrologer",
+        'subtitle': "Hand-picked for you • Trusted by thousands • Years of real experience",
+    },
+    'hi': {
+        'title': "हमारे सर्वश्रेष्ठ ज्योतिषी",
+        'subtitle': "आपके लिए चुने गए • हज़ारों का भरोसा • वर्षों का अनुभव",
+    },
+    'ta': {
+        'title': "எங்கள் சிறந்த ஜோதிடர்",
+        'subtitle': "உங்களுக்காக தேர்ந்தெடுக்கப்பட்டவர் • ஆயிரக்கணக்கானோர் நம்பிக்கை",
+    },
+    'te': {
+        'title': "మా అత్యుత్తమ జ్యోతిష్కుడు",
+        'subtitle': "మీ కోసం ఎంపిక చేయబడ్డారు • వేలమంది నమ్మకం",
+    },
+    'ml': {
+        'title': "ഞങ്ങളുടെ മികച്ച ജ്യോതിഷി",
+        'subtitle': "നിങ്ങൾക്കായി തിരഞ്ഞെടുത്തത് • ആയിരങ്ങളുടെ വിശ്വാസം",
+    },
+}
+
 
 quick_replies = [
     "I'm anxious about my future",
@@ -255,10 +282,8 @@ def pick_available_astrologer():
 def find_named_astrologer(text: str):
     """Looks for one of our real astrologers' names in the given text.
 
-    Used two ways: on the user's own message (they asked for someone by
-    name — that's their explicit choice, always wins) and on Gemini's
-    answer text (so the connect card shown matches whoever the reply
-    actually named, instead of a generic pick that could disagree with it).
+    Only meaningful on the user's OWN message — that's an explicit request
+    for a specific person, the one case where we reveal a name at all.
     """
     normalized = normalize_text(text)
     for astrologer in astrologers:
@@ -267,11 +292,25 @@ def find_named_astrologer(text: str):
     return None
 
 
-def build_connect_action(lang: str, astrologer) -> dict:
+def build_connect_action(lang: str, named_astrologer) -> dict:
+    """Astrologer matching isn't this bot's job — it's the real app's
+    existing matching system. So by default the card stays generic (no
+    name/photo), and only reveals a specific astrologer when the visitor
+    asked for one by name themselves.
+    """
+    if named_astrologer:
+        return {
+            'type': 'connect_popup',
+            'display_mode': 'specific',
+            'label': CONNECT_LABELS.get(lang, CONNECT_LABELS['en']),
+            'astrologer': named_astrologer,
+        }
     return {
         'type': 'connect_popup',
+        'display_mode': 'general',
         'label': CONNECT_LABELS.get(lang, CONNECT_LABELS['en']),
-        'astrologer': astrologer,
+        'astrologer': pick_available_astrologer(),
+        'generic': GENERIC_CARD_TEXT.get(lang, GENERIC_CARD_TEXT['en']),
     }
 
 
@@ -355,7 +394,7 @@ def ask():
         # code-level gate pattern astrohelp uses for its hard rules.
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
-        action = build_connect_action(lang, named_astrologer or pick_available_astrologer())
+        action = build_connect_action(lang, named_astrologer)
     else:
         answer = gemini_client.generate_reply(
             question, history, lang, packages, astrologers, quick_replies
@@ -367,17 +406,13 @@ def ask():
 
         # Conversion-first: the goal is to get the visitor connected, not to
         # keep chatting. Attach a connect CTA to almost every substantive
-        # reply — the user's own explicit astrologer request always wins
-        # ("their own button"), otherwise prefer whoever the reply itself
-        # named (keeps the card consistent with the text), falling back to
-        # any available astrologer for any other recognized concern. Only a
-        # genuinely off-topic NO_INFO reply (no intent, nobody named) skips
-        # the CTA — there's nothing to convert on there.
-        cta_astrologer = named_astrologer or find_named_astrologer(answer)
-        if not cta_astrologer and intent is not None:
-            cta_astrologer = pick_available_astrologer()
-        if cta_astrologer:
-            action = build_connect_action(lang, cta_astrologer)
+        # reply about a real concern — but matching is the real app's job,
+        # not this bot's, so the card stays generic (no name/photo) unless
+        # the visitor asked for someone specific themselves. A genuinely
+        # off-topic NO_INFO reply (no recognized intent) skips the CTA
+        # entirely — there's nothing to convert on there.
+        if named_astrologer or intent is not None:
+            action = build_connect_action(lang, named_astrologer)
 
     s3_client.log_event({
         'session_id': session_id,

@@ -4,6 +4,8 @@
   --sun-dark: #e8532f;
   --cream: #fff7f0;
   --ink: #2a1c14;
+  --gold: #f4c85c;
+  --gold-deep: #e0a53d;
   --line: rgba(42, 28, 20, 0.08);
   --shadow: 0 20px 45px rgba(232, 83, 47, 0.22);
   --radius: 20px;
@@ -185,6 +187,49 @@ button, input { font: inherit; }
   flex-shrink: 0;
 }
 .connect-card .connect-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Default "we haven't matched you to anyone yet" card — deliberately
+   premium/exclusive-feeling (dark + gold, shimmer) rather than the plain
+   white specific-astrologer card, since it's selling the idea of a
+   hand-picked match without actually naming anyone. */
+.message.connect-card-generic {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background: linear-gradient(150deg, #2a1c14, #4a2f1f 60%, #2a1c14);
+  border: 1px solid rgba(244, 200, 92, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+.connect-card-generic::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(244, 200, 92, 0.16) 50%, transparent 65%);
+  pointer-events: none;
+}
+.connect-badge {
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.connect-card-generic .connect-name {
+  color: var(--cream);
+  font-family: 'Playfair Display', serif;
+  font-size: 1.02rem;
+}
+.connect-card-generic .connect-meta {
+  color: rgba(255, 247, 240, 0.72);
+}
+.connect-card-generic .connect-btn {
+  align-self: stretch;
+  text-align: center;
+  margin-top: 4px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+  color: var(--ink);
+}
 
 .photo-message img {
   max-width: 60%;
