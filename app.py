@@ -1,7 +1,10 @@
 import os
 import re
 import uuid
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+
+load_dotenv()
 
 from integrations import gemini_client, s3_client
 
