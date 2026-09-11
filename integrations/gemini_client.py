@@ -1,30 +1,86 @@
-"""Gemini-backed reply generation.
+"""Gemini-backed reply generation, via Vertex AI (service-account auth).
 
-Gated entirely by GEMINI_API_KEY: when it's unset (or a placeholder), every
-function here is a no-op and app.py falls back to the rule-based responder.
-Nothing else in the app requires a real key.
+Matches astrohelp's approach: a GCP service-account JSON, not a plain API
+key. Gated entirely by GEMINI_VERTEX_CREDENTIALS_JSON: when it's unset or
+fails to parse, every function here is a no-op and app.py falls back to the
+rule-based responder. Nothing else in the app requires real credentials.
+
+The credentials JSON itself is read only from the environment — never
+hardcode it here, and never commit a real value into GEMINI_VERTEX_CREDENTIALS_JSON
+in any tracked file (this repo is public).
 """
 import json
 import logging
 import os
 
 import requests
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-flash-latest')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_API_URL = (
-    'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
-)
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash-001')
+GOOGLE_CLOUD_LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'global')
+GEMINI_BILLING_FEATURE = os.environ.get('GEMINI_BILLING_FEATURE', 'astro_conversion_bot')
 REQUEST_TIMEOUT_SECONDS = 15
+
+_SCOPES = ['https://www.googleapis.com/auth/cloud-platform']
+
+_credentials = None
+_project_id = None
+_credentials_load_failed = False
+
+
+def _load_credentials():
+    """Parses GEMINI_VERTEX_CREDENTIALS_JSON and builds credentials once.
+
+    Caches failure too, so a bad/missing value doesn't retry JSON parsing
+    on every request.
+    """
+    global _credentials, _project_id, _credentials_load_failed
+
+    if _credentials is not None or _credentials_load_failed:
+        return
+
+    raw = os.environ.get('GEMINI_VERTEX_CREDENTIALS_JSON', '')
+    if not raw:
+        _credentials_load_failed = True
+        return
+
+    try:
+        info = json.loads(raw)
+        _credentials = service_account.Credentials.from_service_account_info(
+            info, scopes=_SCOPES
+        )
+        _project_id = info['project_id']
+    except (json.JSONDecodeError, KeyError, ValueError) as exc:
+        logger.warning('Failed to parse GEMINI_VERTEX_CREDENTIALS_JSON: %s', exc)
+        _credentials_load_failed = True
 
 
 def is_configured() -> bool:
-    return bool(GEMINI_API_KEY) and not GEMINI_API_KEY.startswith('placeholder')
+    _load_credentials()
+    return _credentials is not None
 
 
-def _build_system_prompt(lang: str, packages, astrologers, quick_replies) -> str:
+def _get_access_token() -> str:
+    if not _credentials.valid:
+        _credentials.refresh(GoogleAuthRequest())
+    return _credentials.token
+
+
+def _endpoint_url() -> str:
+    if GOOGLE_CLOUD_LOCATION == 'global':
+        host = 'aiplatform.googleapis.com'
+    else:
+        host = f'{GOOGLE_CLOUD_LOCATION}-aiplatform.googleapis.com'
+    return (
+        f'https://{host}/v1/projects/{_project_id}/locations/{GOOGLE_CLOUD_LOCATION}'
+        f'/publishers/google/models/{GEMINI_MODEL}:generateContent'
+    )
+
+
+def _build_system_prompt(packages, astrologers, quick_replies) -> str:
     grounding = {
         'packages': packages,
         'astrologers': [
@@ -73,7 +129,7 @@ def _history_to_contents(history):
 
 
 def generate_reply(question: str, history, lang: str, packages, astrologers, quick_replies):
-    """Returns a reply string, or None if Gemini is unconfigured/unavailable.
+    """Returns a reply string, or None if Vertex AI is unconfigured/unavailable.
 
     Never raises — callers fall back to the rule-based responder on None.
     """
@@ -84,18 +140,19 @@ def generate_reply(question: str, history, lang: str, packages, astrologers, qui
     contents.append({'role': 'user', 'parts': [{'text': question}]})
 
     payload = {
-        'system_instruction': {
-            'parts': [{'text': _build_system_prompt(lang, packages, astrologers, quick_replies)}]
+        'systemInstruction': {
+            'parts': [{'text': _build_system_prompt(packages, astrologers, quick_replies)}]
         },
         'contents': contents,
         'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 300},
+        'labels': {'feature': GEMINI_BILLING_FEATURE},
     }
 
-    url = GEMINI_API_URL.format(model=GEMINI_MODEL)
     try:
+        token = _get_access_token()
         response = requests.post(
-            url,
-            params={'key': GEMINI_API_KEY},
+            _endpoint_url(),
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
             json=payload,
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
@@ -105,5 +162,5 @@ def generate_reply(question: str, history, lang: str, packages, astrologers, qui
         text = ''.join(part.get('text', '') for part in parts).strip()
         return text or None
     except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
-        logger.warning('Gemini reply generation failed, falling back to rule-based: %s', exc)
+        logger.warning('Vertex AI reply generation failed, falling back to rule-based: %s', exc)
         return None
