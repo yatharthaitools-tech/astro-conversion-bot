@@ -126,11 +126,11 @@ PREDICTION_KEYWORDS = {
 }
 
 CONNECT_MESSAGES = {
-    'en': "That's exactly what our astrologers are here for -- let's get you connected.",
-    'hi': "यही तो हमारे ज्योतिषी के लिए है -- चलिए आपको जोड़ते हैं।",
-    'ta': "இதற்குத்தான் எங்கள் ஜோதிடர்கள் இருக்கிறார்கள் -- இணைக்கிறேன்.",
-    'te': "దీని కోసమే మా జ్యోతిష్కులు ఉన్నారు -- మిమ్మల్ని కనెక్ట్ చేస్తాను.",
-    'ml': "ഇതിനാണ് ഞങ്ങളുടെ ജ്യോതിഷികൾ ഉള്ളത് -- ബന്ധിപ്പിക്കട്ടെ.",
+    'en': "I know a few people who can help with this. Want me to connect you?",
+    'hi': "इसमें मदद कर सकने वाले कुछ लोगों को मैं जानती हूँ। जोड़ दूँ?",
+    'ta': "இதற்கு உதவக்கூடிய சிலரை எனக்குத் தெரியும். இணைக்கட்டுமா?",
+    'te': "దీనికి సహాయపడగల కొందరు నాకు తెలుసు. కనెక్ట్ చేయమంటారా?",
+    'ml': "ഇതിന് സഹായിക്കാൻ കഴിയുന്ന ചിലരെ എനിക്കറിയാം. ബന്ധിപ്പിക്കട്ടെയോ?",
 }
 
 
@@ -139,13 +139,36 @@ def is_prediction_intent(question, lang):
     keywords = PREDICTION_KEYWORDS.get(lang, PREDICTION_KEYWORDS['en'])
     return any(keyword in normalized for keyword in keywords)
 
+
+# Small inline icons (not emoji) for the opening quick-reply chips, one per
+# concern — kept here rather than in the template since they travel with
+# the same 3 entries the backend already curates. `| safe` in the template
+# is fine: this is our own fixed markup, never user input.
+_ICON_HEART = (
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M8 13.3S2.6 10.1 2.6 6.3C2.6 4.3 4.1 3 5.8 3c.9 0 1.7.4 2.2 1.1C8.5 3.4 9.3 3 '
+    '10.2 3c1.7 0 3.2 1.3 3.2 3.3 0 3.8-5.4 7-5.4 7z"/></svg>'
+)
+_ICON_BRIEFCASE = (
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="2" y="5.3" width="12" height="8" rx="1.2"/>'
+    '<path d="M6 5.3V4a1.2 1.2 0 0 1 1.2-1.2h1.6A1.2 1.2 0 0 1 10 4v1.3"/>'
+    '<path d="M2 9h12"/></svg>'
+)
+_ICON_COIN = (
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
+    '<circle cx="8" cy="8" r="5.8"/>'
+    '<path d="M8 5.2v5.6M6.3 6.6c0-.9.8-1.4 1.7-1.4s1.7.6 1.7 1.3c0 1.8-3.4.9-3.4 2.6 0 '
+    '.8.8 1.4 1.7 1.4s1.7-.6 1.7-1.4"/></svg>'
+)
+
 quick_replies = [
-    "I'm anxious about my future",
-    "Marriage isn't happening",
-    "Facing money problems",
-    "Relationship isn't working out",
-    "Career feels stuck",
-    "Just want to talk to someone",
+    {"text": "Marriage isn't happening", "icon": _ICON_HEART},
+    {"text": "Career feels stuck", "icon": _ICON_BRIEFCASE},
+    {"text": "Facing money problems", "icon": _ICON_COIN},
 ]
 
 messages = []

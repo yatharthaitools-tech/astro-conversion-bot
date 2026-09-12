@@ -10,9 +10,18 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
-    <div class="chat-modal" role="dialog" aria-label="Chat with AI Assistant">
+    <div class="chat-modal" role="dialog" aria-label="Chat with AstroLokal">
       <div class="chat-modal-header">
-        <div class="chat-modal-title"><span class="sparkle">✨</span> Chat with AI Assistant</div>
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.8 2.2a5.6 5.6 0 1 0 4 6.9 4.4 4.4 0 0 1-4-6.9z"/>
+            <path d="M12.3 2.6l.3.9.9.3-.9.3-.3.9-.3-.9-.9-.3.9-.3z"/>
+          </svg>
+        </div>
+        <div class="chat-modal-title">
+          <div class="title-main">AstroLokal</div>
+          <div class="title-sub">Your astrology companion</div>
+        </div>
       </div>
 
       <div class="chat-body" id="chatBody">
@@ -23,15 +32,26 @@
 
       <div class="quick-replies" id="quickReplies">
         {% for item in quick_replies %}
-          <button class="quick-reply" type="button" data-text="{{ item }}">{{ item }}</button>
+          <button class="quick-reply" type="button" data-text="{{ item.text }}">
+            <span class="quick-reply-icon">{{ item.icon | safe }}</span>{{ item.text }}
+          </button>
         {% endfor %}
       </div>
 
       <div class="input-bar">
-        <button class="photo-btn" id="photoBtn" type="button" aria-label="Upload photo">📷</button>
+        <button class="photo-btn" id="photoBtn" type="button" aria-label="Upload photo">
+          <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 5.6A1.4 1.4 0 0 1 3.4 4.2h1.3l.6-1a1 1 0 0 1 .9-.5h3.6a1 1 0 0 1 .9.5l.6 1h1.3A1.4 1.4 0 0 1 14 5.6v5.8A1.4 1.4 0 0 1 12.6 12.8H3.4A1.4 1.4 0 0 1 2 11.4V5.6z"/>
+            <circle cx="8" cy="8.4" r="2.3"/>
+          </svg>
+        </button>
         <input id="photoInput" type="file" accept="image/*" hidden />
-        <input id="chatInput" class="text-input" placeholder="Type your message..." />
-        <button class="send-btn" id="sendBtn" type="button" aria-label="Send">➤</button>
+        <input id="chatInput" class="text-input" placeholder="What's been on your mind?" />
+        <button class="send-btn" id="sendBtn" type="button" aria-label="Send">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+            <path d="M2 8L13.6 2.4 8.9 13.6 6.9 9.1 2 8z"/>
+          </svg>
+        </button>
       </div>
     </div>
 

@@ -40,19 +40,33 @@ button, input { font: inherit; }
 .chat-modal-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 14px 16px;
   background: white;
   border-bottom: 1px solid var(--line);
 }
-.chat-modal-title {
-  font-weight: 700;
-  font-size: 0.98rem;
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 111, 61, 0.12);
+  color: var(--sun-dark);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  flex-shrink: 0;
 }
-.chat-modal-title .sparkle { color: var(--sun-dark); }
+.chat-modal-title { min-width: 0; }
+.title-main {
+  font-weight: 700;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+.title-sub {
+  font-size: 0.74rem;
+  color: rgba(42, 28, 20, 0.55);
+  margin-top: 1px;
+}
 
 .chat-body {
   flex: 1;
@@ -86,21 +100,38 @@ button, input { font: inherit; }
 
 .quick-replies {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  padding: 0 14px 10px;
+  padding: 4px 14px 12px;
   background: #fff3e8;
 }
+.quick-replies[hidden] { display: none; }
 .quick-reply {
-  border: 1px solid rgba(255, 111, 61, 0.35);
-  background: rgba(255, 111, 61, 0.08);
-  color: var(--sun-dark);
-  border-radius: 999px;
-  padding: 7px 12px;
-  font-size: 0.76rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid rgba(255, 111, 61, 0.3);
+  background: white;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.quick-reply:hover { background: rgba(255, 111, 61, 0.16); }
+.quick-reply:hover { border-color: rgba(255, 111, 61, 0.55); background: rgba(255, 111, 61, 0.06); }
+.quick-reply-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sun-dark);
+  flex-shrink: 0;
+}
 
 .input-bar {
   display: flex;
@@ -110,12 +141,15 @@ button, input { font: inherit; }
   background: white;
 }
 .photo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   background: var(--cream);
+  color: var(--ink);
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  font-size: 1.1rem;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -131,13 +165,15 @@ button, input { font: inherit; }
 }
 .text-input:focus { outline: 2px solid rgba(255, 111, 61, 0.35); }
 .send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
+  background: var(--sun-dark);
   color: white;
-  font-size: 1rem;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -166,6 +202,8 @@ button, input { font: inherit; }
   height: 42px;
   border-radius: 50%;
   object-fit: cover;
+  background: rgba(255, 111, 61, 0.15);
+  color: transparent; /* hide alt text if the image fails to load; a11y name is still on the card itself */
   flex-shrink: 0;
 }
 .connect-card .connect-info {
@@ -179,7 +217,23 @@ button, input { font: inherit; }
 .connect-card .connect-meta {
   font-size: 0.75rem;
   color: rgba(42, 28, 20, 0.62);
-  margin-top: 2px;
+  margin-top: 4px;
+}
+/* Real trust signals only (experience, rating + consultation count) — no
+   badges, no "trusted by thousands" claims, just the facts the record has. */
+.connect-trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.trust-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--sun-dark);
+  background: rgba(255, 111, 61, 0.08);
+  border-radius: 999px;
+  padding: 3px 9px;
 }
 .connect-actions {
   display: flex;
@@ -187,6 +241,10 @@ button, input { font: inherit; }
 }
 .connect-card .connect-btn {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 999px;
   font-weight: 700;
   font-size: 0.83rem;
@@ -207,18 +265,6 @@ button, input { font: inherit; }
   background: var(--sun-dark);
   color: white;
   border: 1px solid var(--sun-dark);
-}
-
-.connect-badge {
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: var(--sun-dark);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.message.connect-card-generic {
-  background: #fff3e8;
-  border-color: rgba(255, 111, 61, 0.25);
 }
 
 .photo-message img {

@@ -18,7 +18,8 @@ ASTROLOGERS = [
         "name": "Mahalakshmi",
         "specialty": "Face reading, Palm reading, Numerology",
         "languages": "Hindi, English, Telugu",
-        "experience": "10 years",
+        "experience": "10+ years",
+        "consultations": "2,400+ consultations",
         "rating": 4.4,
         "price": "10/min",
         "price_original": "56/min",
@@ -30,7 +31,8 @@ ASTROLOGERS = [
         "name": "Samrat",
         "specialty": "Face reading, Tarot, Vedic",
         "languages": "Hindi, English, Telugu, Marathi",
-        "experience": "7 years",
+        "experience": "7+ years",
+        "consultations": "1,000+ consultations",
         "rating": 4.6,
         "price": "12/min",
         "price_original": None,
@@ -42,7 +44,8 @@ ASTROLOGERS = [
         "name": "Nidhi",
         "specialty": "Face reading, Palm reading, Numerology",
         "languages": "Hindi, English, Telugu",
-        "experience": "3 years",
+        "experience": "3+ years",
+        "consultations": "600+ consultations",
         "rating": 4.4,
         "price": "15/min",
         "price_original": "25/min",
@@ -57,12 +60,15 @@ CONNECT_LABELS = {
     "ml": "ഇപ്പോൾ ബന്ധിപ്പിക്കുക",
 }
 
+# Kept modest on purpose — there's no real astrologer named here, so no
+# invented stat/trust-claim is attached to this variant. Just a plain,
+# honest line that reads as a continuation of the conversation.
 GENERIC_CARD_TEXT = {
-    "en": {"title": "Our Top-Rated Astrologer", "subtitle": "Hand-picked for you • Trusted by thousands • Years of real experience"},
-    "hi": {"title": "हमारे सर्वश्रेष्ठ ज्योतिषी", "subtitle": "आपके लिए चुने गए • हज़ारों का भरोसा • वर्षों का अनुभव"},
-    "ta": {"title": "எங்கள் சிறந்த ஜோதிடர்", "subtitle": "உங்களுக்காக தேர்ந்தெடுக்கப்பட்டவர் • ஆயிரக்கணக்கானோர் நம்பிக்கை"},
-    "te": {"title": "మా అత్యుత్తమ జ్యోతిష్కుడు", "subtitle": "మీ కోసం ఎంపిక చేయబడ్డారు • వేలమంది నమ్మకం"},
-    "ml": {"title": "ഞങ്ങളുടെ മികച്ച ജ്യോതിഷി", "subtitle": "നിങ്ങൾക്കായി തിരഞ്ഞെടുത്തത് • ആയിരങ്ങളുടെ വിശ്വാസം"},
+    "en": {"title": "A good match is online right now", "subtitle": "Picked based on what you've shared"},
+    "hi": {"title": "अभी एक अच्छा मैच उपलब्ध है", "subtitle": "आपकी बात के आधार पर चुना गया"},
+    "ta": {"title": "பொருத்தமான ஒருவர் இப்போது இருக்கிறார்", "subtitle": "நீங்கள் பகிர்ந்ததன் அடிப்படையில் தேர்ந்தெடுக்கப்பட்டது"},
+    "te": {"title": "సరైన వ్యక్తి ఇప్పుడు అందుబాటులో ఉన్నారు", "subtitle": "మీరు చెప్పిన దాని ఆధారంగా ఎంచుకోబడింది"},
+    "ml": {"title": "അനുയോജ്യമായ ഒരാൾ ഇപ്പോൾ ഓൺലൈനിലുണ്ട്", "subtitle": "നിങ്ങൾ പറഞ്ഞതിന്റെ അടിസ്ഥാനത്തിൽ തിരഞ്ഞെടുത്തത്"},
 }
 
 
