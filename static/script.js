@@ -51,28 +51,50 @@ if (chatBody && chatBody.children.length === 0) {
   appendMessage('bot', welcomeMessage);
 }
 
+// Shown the moment the visitor's message goes out, removed the moment a
+// reply (or an error) is ready — so there's never a silent gap while
+// Gemini's own tool-calling loop is actually thinking.
+function showTypingIndicator() {
+  const msg = document.createElement('div');
+  msg.className = 'message bot typing-indicator';
+  msg.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+  chatBody.appendChild(msg);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  return msg;
+}
+
 async function sendToBot(text) {
+  const typingEl = showTypingIndicator();
+  // A floor on how long it shows, so a near-instant (rule-based fallback)
+  // reply doesn't just flash the indicator for a frame — it should still
+  // read as "thinking", not glitch.
+  const minDelay = new Promise((resolve) => setTimeout(resolve, 500));
+
   try {
-    const response = await fetch('/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question: text,
-        session_id: getSessionId(),
-        history: history.slice(0, -1)
-      })
-    });
+    const [response] = await Promise.all([
+      fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: text,
+          session_id: getSessionId(),
+          history: history.slice(0, -1)
+        })
+      }),
+      minDelay
+    ]);
 
     const data = await response.json();
     const answer = data.answer || "I don't have information regarding that.";
-    setTimeout(() => {
-      appendMessage('bot', answer);
-      if (data.action && data.action.type === 'connect_popup') {
-        renderConnectCard(data.action);
-      }
-    }, 250);
+    typingEl.remove();
+    appendMessage('bot', answer);
+    if (data.action && data.action.type === 'connect_popup') {
+      renderConnectCard(data.action);
+    }
   } catch (error) {
-    setTimeout(() => appendMessage('bot', "I don't have information regarding that."), 250);
+    await minDelay;
+    typingEl.remove();
+    appendMessage('bot', "I don't have information regarding that.");
   }
 }
 
