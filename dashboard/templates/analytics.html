@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Analytics — AstroLokal Admin{% endblock %}
+{% block content %}
+<h1>Analytics</h1>
+
+<form method="get" class="filter-bar">
+  <input type="date" name="from" value="{{ filters.from }}" placeholder="From" />
+  <input type="date" name="to" value="{{ filters.to }}" placeholder="To" />
+  <button type="submit">Filter</button>
+  <a href="{{ url_for('dashboard.analytics') }}" class="filter-clear">Clear</a>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.total_conversations }}</div>
+    <div class="kpi-label">conversations</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.total_turns }}</div>
+    <div class="kpi-label">bot replies</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.cards_shown }}</div>
+    <div class="kpi-label">connect cards shown</div>
+  </div>
+</div>
+
+<div class="panel-grid">
+  <div class="panel">
+    <h2>Reply source</h2>
+    <table class="admin-table">
+      <thead><tr><th>Source</th><th>Count</th></tr></thead>
+      <tbody>
+        {% for row in stats.source_breakdown %}
+        <tr><td>{{ row.source }}</td><td>{{ row.count }}</td></tr>
+        {% else %}
+        <tr><td colspan="2" class="empty-state">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Language</h2>
+    <table class="admin-table">
+      <thead><tr><th>Language</th><th>Conversations</th></tr></thead>
+      <tbody>
+        {% for row in stats.language_breakdown %}
+        <tr><td>{{ row.language }}</td><td>{{ row.count }}</td></tr>
+        {% else %}
+        <tr><td colspan="2" class="empty-state">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>Tool calls</h2>
+    <table class="admin-table">
+      <thead><tr><th>Tool</th><th>Calls</th><th>Succeeded</th><th>Success rate</th></tr></thead>
+      <tbody>
+        {% for row in stats.tool_stats %}
+        <tr>
+          <td class="mono">{{ row.tool }}</td>
+          <td>{{ row.calls }}</td>
+          <td>{{ row.ok }}</td>
+          <td>{{ ((row.ok / row.calls) * 100) | round(1) }}%</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty-state">No tool calls logged yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

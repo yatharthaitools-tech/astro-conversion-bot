@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Admin Login — AstroLokal{% endblock %}
+{% block bare_content %}
+<div class="login-page">
+  <form method="post" class="login-card">
+    <div class="login-brand">AstroLokal <span>Admin</span></div>
+    {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+    <input type="password" name="password" placeholder="Admin password" autofocus required class="login-input" />
+    <button type="submit" class="login-btn">Log in</button>
+  </form>
+</div>
+{% endblock %}

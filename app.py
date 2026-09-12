@@ -10,9 +10,18 @@ load_dotenv()
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
 from integrations import recommend_flow_client, s3_client
+from dashboard import db as dashboard_db
+from dashboard.routes import bp as dashboard_bp
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
+# Only needed for the admin dashboard's login session cookie — the main
+# chat widget itself has no session/cookie state. Falls back to a
+# per-process random key (dev-only behavior: sessions won't survive a
+# restart) rather than refusing to start when ADMIN_SESSION_SECRET isn't set.
+app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or os.urandom(32)
+app.register_blueprint(dashboard_bp)
+dashboard_db.init_db()
 
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
 ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -346,6 +355,10 @@ def ask():
         'source': source,
         'tool_trace': ctx.trace,
     })
+    dashboard_db.record_turn(
+        session_id, ctx.user_id, question, answer, lang, source, ctx.trace,
+        card_shown=bool(ctx.ui_action),
+    )
 
     return jsonify({
         'answer': answer,

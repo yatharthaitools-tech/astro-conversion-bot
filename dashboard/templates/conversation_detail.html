@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Conversation — AstroLokal Admin{% endblock %}
+{% block content %}
+<a href="{{ url_for('dashboard.conversations') }}" class="back-link">&larr; Back to conversations</a>
+
+{% if not conversation %}
+  <h1>Not found</h1>
+  <p>No conversation with session <span class="mono">{{ session_id }}</span>.</p>
+{% else %}
+  <h1>Conversation</h1>
+  <div class="detail-meta">
+    <div><span class="label">Session</span><span class="mono">{{ conversation.session_id }}</span></div>
+    <div><span class="label">User</span><span class="mono">{{ conversation.user_id }}</span></div>
+    <div><span class="label">Turns</span>{{ conversation.turn_count }}</div>
+    <div><span class="label">Language</span>{{ conversation.last_language or '—' }}</div>
+    <div><span class="label">First seen</span>{{ conversation.first_seen_at[:19].replace('T', ' ') }}</div>
+    <div><span class="label">Last seen</span>{{ conversation.last_seen_at[:19].replace('T', ' ') }}</div>
+  </div>
+
+  <div class="transcript">
+    {% for m in conversation.messages %}
+      <div class="transcript-row transcript-{{ m.role }}">
+        <div class="transcript-bubble">{{ m.text }}</div>
+        {% if m.role == 'bot' %}
+          <div class="transcript-meta">
+            <span class="tag tag-source">{{ m.source or 'unknown' }}</span>
+            {% if m.card_shown %}<span class="tag tag-card">card shown</span>{% endif %}
+            {% if m.tool_trace %}
+              {% for call in m.tool_trace %}
+                <span class="tag {{ 'tag-ok' if call.ok else 'tag-fail' }}">{{ call.tool }}{{ ' ✓' if call.ok else ' ✗' }}</span>
+              {% endfor %}
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}
