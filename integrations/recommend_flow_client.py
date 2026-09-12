@@ -7,10 +7,20 @@ pick_best_match()'s body with a real call into that system.
 Astrologer roster shape/data matches the real AstroLokal app (see the
 Figma reference): name, specialty tags, languages, per-minute coin
 pricing, live availability.
+
+Portraits are 6 locally-hosted illustrated avatars (static/avatars/*.svg) —
+not tied to any external "astrologer photo" URL, and not literal photos of
+real people. The 3 named mock astrologers each keep one fixed portrait;
+the anonymous "recommend from the pool" flow (no name shown, since real
+matching isn't this bot's job) picks one of the 6 at random per turn, so
+it still feels like a real person without claiming to be a specific one.
 """
+import random
 import re
 
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
+
+AVATAR_POOL = [f"/static/avatars/{n}.svg" for n in range(1, 7)]
 
 ASTROLOGERS = [
     {
@@ -24,7 +34,7 @@ ASTROLOGERS = [
         "price": "10/min",
         "price_original": "56/min",
         "availability": "Available now",
-        "image": "https://ui-avatars.com/api/?name=Mahalakshmi&background=ff8a5c&color=fff&size=128",
+        "image": AVATAR_POOL[0],
     },
     {
         "id": "samrat",
@@ -37,7 +47,7 @@ ASTROLOGERS = [
         "price": "12/min",
         "price_original": None,
         "availability": "Busy, wait ~15 min",
-        "image": "https://ui-avatars.com/api/?name=Samrat&background=e8623d&color=fff&size=128",
+        "image": AVATAR_POOL[1],
     },
     {
         "id": "nidhi",
@@ -50,7 +60,7 @@ ASTROLOGERS = [
         "price": "15/min",
         "price_original": "25/min",
         "availability": "Available now",
-        "image": "https://ui-avatars.com/api/?name=Nidhi&background=ff6f47&color=fff&size=128",
+        "image": AVATAR_POOL[2],
     },
 ]
 
@@ -115,8 +125,9 @@ def pick_best_match():
 def trigger(lang: str, astrologer_id: str = None) -> dict:
     """Builds the connect_popup UI action. astrologer_id set (visitor asked
     for someone by name) -> 'specific' display, real name/photo. Omitted
-    -> 'general' display, no name/photo revealed (matching isn't this
-    bot's job)."""
+    -> 'general' display: no name revealed (matching isn't this bot's
+    job), but a random portrait from AVATAR_POOL so it still reads as a
+    real person rather than a faceless placeholder."""
     label = CONNECT_LABELS.get(lang, CONNECT_LABELS["en"])
     named = get_astrologer(astrologer_id) if astrologer_id else None
     if named:
@@ -126,10 +137,12 @@ def trigger(lang: str, astrologer_id: str = None) -> dict:
             "label": label,
             "astrologer": named,
         }
+    generic = dict(GENERIC_CARD_TEXT.get(lang, GENERIC_CARD_TEXT["en"]))
+    generic["image"] = random.choice(AVATAR_POOL)
     return {
         "type": "connect_popup",
         "display_mode": "general",
         "label": label,
         "astrologer": pick_best_match(),
-        "generic": GENERIC_CARD_TEXT.get(lang, GENERIC_CARD_TEXT["en"]),
+        "generic": generic,
     }

@@ -167,7 +167,24 @@ function renderConnectCard(action) {
     meta.textContent = (action.generic && action.generic.subtitle) || '';
     info.appendChild(name);
     if (meta.textContent) info.appendChild(meta);
-    card.appendChild(info);
+
+    // A real (if anonymous) face, not a blank slot — matching identity
+    // itself is the app's own recommend system's job, not this bot's, so
+    // no name/rating is attached, just a portrait from the shared pool.
+    const genericImage = action.generic && action.generic.image;
+    if (genericImage) {
+      const top = document.createElement('div');
+      top.className = 'connect-top';
+      const avatar = document.createElement('img');
+      avatar.className = 'avatar';
+      avatar.src = genericImage;
+      avatar.alt = '';
+      top.appendChild(avatar);
+      top.appendChild(info);
+      card.appendChild(top);
+    } else {
+      card.appendChild(info);
+    }
   } else {
     const name = document.createElement('div');
     name.className = 'connect-name';
