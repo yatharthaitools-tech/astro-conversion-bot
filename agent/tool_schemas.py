@@ -114,16 +114,13 @@ CREDIT_COINS = {
     },
 }
 
-# Known astrologer ids, kept in sync by hand with
-# integrations/recommend_flow_client.py's ASTROLOGERS list — duplicated
-# here (rather than imported) so this file stays pure data with no
-# integrations/ dependency, per the module docstring above. Embedding the
-# real id/name pairs directly in the schema is what lets the model
-# actually map "Samrat" in the visitor's own message to astrologer_id
-# "samrat" — without this, it has no way to resolve a name to an id at
-# all, and silently drops astrologer_id even when the visitor named someone.
-_KNOWN_ASTROLOGERS = "mahalakshmi (Mahalakshmi), samrat (Samrat), nidhi (Nidhi)"
-
+# Real names are deliberately NOT spelled out anywhere in these
+# descriptions (only in search_astrologers' own results) — otherwise the
+# model treats them as a menu it can rattle off on its own ("Do you prefer
+# Samrat, Nidhi, or Mahalakshmi?"), which defeats the whole point of the
+# recommend flow staying anonymous. The enum values below are just ids for
+# schema validation; the model only ever learns a real name if the
+# visitor said it first and search_astrologers echoed it back.
 SEARCH_ASTROLOGERS = {
     "name": "search_astrologers",
     "description": (
@@ -150,15 +147,17 @@ SEARCH_ASTROLOGERS = {
 TRIGGER_RECOMMEND_ASTROLOGER = {
     "name": "trigger_recommend_astrologer",
     "description": (
-        "Surfaces the Chat/Call connect entry point in the chat UI. "
-        "Astrologer matching/ranking is NOT your job — a separate system "
-        "owns that. Omit astrologer_id to let that system pick the best "
-        "match (the normal case). Only pass astrologer_id once you've "
-        "resolved exactly who the visitor means via search_astrologers — "
-        f"never guess directly from their wording. Known ids: "
-        f"{_KNOWN_ASTROLOGERS}. This is also the required response to ANY "
-        "prediction/fortune question — never answer the prediction itself, "
-        "always call this instead."
+        "Surfaces the Chat/Call connect entry point in the chat UI — always "
+        "the same anonymous 'connect with a top astrologer' card, never a "
+        "name or photo, regardless of astrologer_id. Astrologer "
+        "matching/ranking is NOT your job — a separate system owns that. "
+        "Omit astrologer_id to let that system pick the best match (the "
+        "normal case, and the ONLY case unless the visitor named someone "
+        "first). Only pass astrologer_id once you've resolved exactly who "
+        "the visitor means via search_astrologers — never guess, and never "
+        "state or list a name yourself unprompted. This is also the "
+        "required response to ANY prediction/fortune question — never "
+        "answer the prediction itself, always call this instead."
     ),
     "input_schema": {
         "type": "object",
@@ -181,11 +180,12 @@ NOTIFY_ME_SUBSCRIBE = {
     "name": "notify_me_subscribe",
     "description": (
         "Subscribes the visitor to be notified the moment a specific "
-        "astrologer (who's currently offline/busy) comes online. Use this "
-        "as the conversion-recovery path when a visitor wants someone "
-        "specific who isn't available right now — offer this alongside "
-        "trigger_recommend_astrologer for a live alternate, don't just say "
-        f"'keep checking the app'. Map their name to an id: {_KNOWN_ASTROLOGERS}."
+        "astrologer (who's currently offline/busy) comes online. Only ever "
+        "called for someone the visitor themselves already named and "
+        "search_astrologers already resolved to an id — use this as the "
+        "conversion-recovery path when that person isn't available right "
+        "now, offered alongside trigger_recommend_astrologer for a live "
+        "alternate, don't just say 'keep checking the app'."
     ),
     "input_schema": {
         "type": "object",
