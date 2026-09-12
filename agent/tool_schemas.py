@@ -180,6 +180,17 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
                 "enum": ["chat", "call"],
                 "description": "If the visitor already said which they prefer; otherwise omit and let the UI ask.",
             },
+            "concern": {
+                "type": "string",
+                "enum": ["career", "love", "finance", "marriage", "general"],
+                "description": (
+                    "Which concern this connect is about, based on the "
+                    "conversation so far — used ONLY to word the card's "
+                    "subtitle (e.g. 'understands career pressure' vs "
+                    "'understands relationship stuff'), never a business "
+                    "decision. Use 'general' if nothing specific fits."
+                ),
+            },
         },
     },
 }

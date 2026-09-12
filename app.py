@@ -228,6 +228,18 @@ def rule_based_answer(question: str, lang: str, intent) -> str:
     return PRD_INTENTS[intent]['answers'][lang]
 
 
+# Maps map_intent()'s keyword-based PRD_INTENTS keys down to the small set
+# of concern buckets recommend_flow_client.trigger() knows how to word a
+# card subtitle for. Only used by the two CODE-LEVEL trigger() calls below
+# (prediction deflect + safety net) — the agent's own tool call gets its
+# concern straight from the model instead, which has fuller context.
+_CONCERN_BY_INTENT = {'career': 'career', 'love': 'love', 'finance': 'finance', 'marriage': 'marriage'}
+
+
+def concern_for_intent(intent) -> str:
+    return _CONCERN_BY_INTENT.get(intent, 'general')
+
+
 @app.route('/')
 def home():
     return render_template(
@@ -301,7 +313,7 @@ def ask():
         # agent's own trigger_recommend_astrologer call for this case
         # isn't reliable enough on prompt instruction alone (see
         # PREDICTION_KEYWORDS' comment above).
-        ctx.ui_action = recommend_flow_client.trigger(lang, None)
+        ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(map_intent(question)))
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
     else:
@@ -323,7 +335,7 @@ def ask():
             # principle still needs the button to actually exist whenever
             # the reply implies one). Only fires when the agent didn't
             # already set an action itself.
-            ctx.ui_action = recommend_flow_client.trigger(lang, None)
+            ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(map_intent(question)))
 
     s3_client.log_event({
         'session_id': session_id,

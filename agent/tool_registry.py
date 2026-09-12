@@ -59,7 +59,8 @@ def _handle_search_astrologers(safe_input, ctx):
 
 def _handle_trigger_recommend_astrologer(safe_input, ctx):
     astrologer_id = safe_input.get("astrologer_id")
-    action = recommend_flow_client.trigger(ctx.language, astrologer_id)
+    concern = safe_input.get("concern")
+    action = recommend_flow_client.trigger(ctx.language, astrologer_id, concern)
     ctx.ui_action = action
     astrologer = action["astrologer"]
     # Real availability, not a guess — this is what tells the model whether
