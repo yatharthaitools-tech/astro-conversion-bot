@@ -142,14 +142,6 @@ function renderConnectCard(action) {
   const card = document.createElement('div');
   card.className = isGeneric ? 'message bot connect-card connect-card-generic' : 'message bot connect-card';
 
-  const dismissBtn = document.createElement('button');
-  dismissBtn.className = 'connect-dismiss';
-  dismissBtn.type = 'button';
-  dismissBtn.setAttribute('aria-label', 'Dismiss');
-  dismissBtn.textContent = '✕';
-  dismissBtn.addEventListener('click', () => card.remove());
-  card.appendChild(dismissBtn);
-
   const info = document.createElement('div');
   info.className = 'connect-info';
 

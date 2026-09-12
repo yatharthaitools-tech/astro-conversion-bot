@@ -4,8 +4,6 @@
   --sun-dark: #e8532f;
   --cream: #fff7f0;
   --ink: #2a1c14;
-  --gold: #f4c85c;
-  --gold-deep: #e0a53d;
   --line: rgba(42, 28, 20, 0.08);
   --shadow: 0 20px 45px rgba(232, 83, 47, 0.22);
   --radius: 20px;
@@ -144,18 +142,19 @@ button, input { font: inherit; }
   flex-shrink: 0;
 }
 
-/* --- Inline "connect with an astrologer" card, rendered inside the chat --- */
+/* --- Inline "connect with an astrologer" card, rendered inside the chat ---
+   Kept calm and consistent with the rest of the UI — same white card style
+   for both the named and generic variants, just a subtle tinted background
+   on the generic one to read as "a match", not a hard sell. */
 .connect-card {
   align-self: stretch;
   background: white;
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 12px;
-  padding-right: 30px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  position: relative;
 }
 .connect-top {
   display: flex;
@@ -182,98 +181,44 @@ button, input { font: inherit; }
   color: rgba(42, 28, 20, 0.62);
   margin-top: 2px;
 }
-.connect-dismiss {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(42, 28, 20, 0.08);
-  color: var(--ink);
-  font-size: 0.6rem;
-  line-height: 1;
-  cursor: pointer;
-  z-index: 2;
-}
-.message.connect-card-generic .connect-dismiss {
-  background: rgba(244, 200, 92, 0.18);
-  color: var(--gold);
-}
 .connect-actions {
   display: flex;
   gap: 8px;
 }
 .connect-card .connect-btn {
-  border: none;
+  flex: 1;
   border-radius: 999px;
   font-weight: 700;
+  font-size: 0.83rem;
+  padding: 10px 10px;
   cursor: pointer;
+  text-align: center;
 }
 .connect-card .connect-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Equal-size chips; Call is the emphasized default (filled, brand color),
+   Chat is the secondary option (outline) — same footprint either way. */
 .connect-btn-chat {
-  flex: 1;
-  background: rgba(255, 111, 61, 0.1);
+  background: white;
   color: var(--sun-dark);
-  border: 1px solid rgba(255, 111, 61, 0.3);
-  padding: 9px 10px;
-  font-size: 0.8rem;
+  border: 1px solid rgba(255, 111, 61, 0.4);
 }
 .connect-btn-call {
-  /* Promoted CTA — bigger share of the row, filled, bolder */
-  flex: 1.6;
-  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
+  background: var(--sun-dark);
   color: white;
-  padding: 10px 12px;
-  font-size: 0.86rem;
-  box-shadow: 0 8px 18px rgba(232, 83, 47, 0.3);
-}
-.message.connect-card-generic .connect-btn-call {
-  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-  color: var(--ink);
-  box-shadow: 0 8px 18px rgba(244, 200, 92, 0.35);
-}
-.message.connect-card-generic .connect-btn-chat {
-  background: rgba(244, 200, 92, 0.12);
-  color: var(--gold);
-  border-color: rgba(244, 200, 92, 0.35);
+  border: 1px solid var(--sun-dark);
 }
 
-/* Default "we haven't matched you to anyone yet" card — deliberately
-   premium/exclusive-feeling (dark + gold, shimmer) rather than the plain
-   white specific-astrologer card, since it's selling the idea of a
-   hand-picked match without actually naming anyone. */
-.message.connect-card-generic {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  background: linear-gradient(150deg, #2a1c14, #4a2f1f 60%, #2a1c14);
-  border: 1px solid rgba(244, 200, 92, 0.4);
-  position: relative;
-  overflow: hidden;
-}
-.connect-card-generic::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg, transparent 35%, rgba(244, 200, 92, 0.16) 50%, transparent 65%);
-  pointer-events: none;
-}
 .connect-badge {
   font-size: 0.66rem;
-  font-weight: 800;
-  color: var(--gold);
+  font-weight: 700;
+  color: var(--sun-dark);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
-.connect-card-generic .connect-name {
-  color: var(--cream);
-  font-family: 'Playfair Display', serif;
-  font-size: 1.02rem;
-}
-.connect-card-generic .connect-meta {
-  color: rgba(255, 247, 240, 0.72);
+.message.connect-card-generic {
+  background: #fff3e8;
+  border-color: rgba(255, 111, 61, 0.25);
 }
 
 .photo-message img {
