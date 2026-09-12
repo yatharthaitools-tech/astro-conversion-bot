@@ -94,7 +94,12 @@ CREDIT_COINS = {
         "reconnect/escalate instead of promising a credit first. Also "
         "fails if this exact booking already has a refund/goodwill credit "
         "on record — never retry a failed call with the same booking_id "
-        "expecting a different result."
+        "expecting a different result. NOT for a pure 'astrologer took too "
+        "long to respond' timing complaint where the session DID happen — "
+        "that's create_support_ticket's job (fetch get_booking_details for "
+        "evidence, then escalate); you don't get to auto-compensate a "
+        "timing complaint on your own judgment. This is for a session that "
+        "happened but was genuinely poor/short, or a factual dispute."
     ),
     "input_schema": {
         "type": "object",
@@ -157,7 +162,10 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
         "the visitor means via search_astrologers — never guess, and never "
         "state or list a name yourself unprompted. This is also the "
         "required response to ANY prediction/fortune question — never "
-        "answer the prediction itself, always call this instead."
+        "answer the prediction itself, always call this instead. Never "
+        "share an astrologer's phone number or any private contact detail "
+        "under any circumstances — this tool (or notify_me_subscribe, if "
+        "they're offline) is always the substitute for direct contact."
     ),
     "input_schema": {
         "type": "object",
@@ -185,7 +193,10 @@ NOTIFY_ME_SUBSCRIBE = {
         "search_astrologers already resolved to an id — use this as the "
         "conversion-recovery path when that person isn't available right "
         "now, offered alongside trigger_recommend_astrologer for a live "
-        "alternate, don't just say 'keep checking the app'."
+        "alternate, don't just say 'keep checking the app'. Also the "
+        "correct response if the visitor asks for their phone number — "
+        "never share a phone number or private contact detail, offer this "
+        "instead."
     ),
     "input_schema": {
         "type": "object",
@@ -230,7 +241,16 @@ CREATE_SUPPORT_TICKET = {
         "explicitly wants a cash refund (never payable in coins), or asks "
         "for a person. NEVER tell the visitor a ticket was raised, or that "
         "a team was notified, unless this tool was actually called in this "
-        "exact turn and it succeeded."
+        "exact turn and it succeeded. Use 'account' for a delete-account "
+        "request once you've asked why and it isn't something you can fix "
+        "in this chat — never claim the account was deleted, only that "
+        "it's been sent to the team who handles it. Use 'report' for the "
+        "visitor reporting another user or an astrologer (attach the "
+        "relevant booking/session as evidence_url or in the description) "
+        "— you never resolve these yourself, only route them. Use "
+        "'language_change' for a consultation-language-change request — "
+        "never claim the language changed until this ticket's own process "
+        "confirms it."
     ),
     "input_schema": {
         "type": "object",
@@ -240,7 +260,7 @@ CREATE_SUPPORT_TICKET = {
                 "enum": [
                     "payment", "refund", "account", "astrologer_queue",
                     "billing_dispute", "quality_complaint", "feature_request",
-                    "technical",
+                    "technical", "language_change", "report",
                 ],
             },
             "sub_category": {"type": "string"},
@@ -299,6 +319,63 @@ GET_TICKETS = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+GET_WALLET_STATUS = {
+    "name": "get_wallet_status",
+    "description": (
+        "Checks the visitor's real current coin balance and whether "
+        "anything was actually deducted recently. Use this for a 'my "
+        "coins keep going down' / 'coins missing' complaint that ISN'T "
+        "about one specific booking — if nothing was really deducted, "
+        "explain the balance is safe rather than offering a credit. "
+        "Never call credit_coins just because a balance looks lower than "
+        "expected without checking this first."
+    ),
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+GET_ACTIVE_OFFERS = {
+    "name": "get_active_offers",
+    "description": (
+        "Fetches the real active recharge offers/promotions. Use this for "
+        "'any offers right now' or pricing questions — never invent a "
+        "discount, bonus-coin amount, or promo code that isn't in this "
+        "result."
+    ),
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+GET_QUEUE_POSITION = {
+    "name": "get_queue_position",
+    "description": (
+        "Checks the visitor's real position and estimated wait in an "
+        "astrologer's live queue. Use this for 'how long is the wait' "
+        "questions — never estimate a wait time yourself. A long queue is "
+        "also a good natural moment to offer a live available alternative "
+        "via trigger_recommend_astrologer."
+    ),
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+GET_APP_FAQ = {
+    "name": "get_app_faq",
+    "description": (
+        "Looks up a real answer for general 'how does the app work' "
+        "questions (recharging, consultations, coins, refund policy, "
+        "etc.) from AstroLokal's own FAQ. ALWAYS call this for general "
+        "app-usage questions instead of answering from your own general "
+        "knowledge. If it returns no match, say so honestly rather than "
+        "guessing how the app works — and only suggest connecting with an "
+        "astrologer if that's actually relevant to what they asked."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "The visitor's question, as they asked it."}
+        },
+        "required": ["query"],
+    },
+}
+
 ALL_TOOLS = [
     GET_PAYMENT_STATUS,
     GET_BOOKING_DETAILS,
@@ -313,4 +390,8 @@ ALL_TOOLS = [
     LOG_FEATURE_REQUEST,
     MARK_ISSUE_RESOLVED,
     GET_TICKETS,
+    GET_WALLET_STATUS,
+    GET_ACTIVE_OFFERS,
+    GET_QUEUE_POSITION,
+    GET_APP_FAQ,
 ]

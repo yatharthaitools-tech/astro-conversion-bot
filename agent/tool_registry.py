@@ -15,6 +15,8 @@ UI's own JSON shape.
 """
 from integrations import (
     coin_credit_client,
+    faq_client,
+    offers_client,
     payment_bottomsheet_client,
     recommend_flow_client,
     redash_client,
@@ -116,6 +118,22 @@ def _handle_get_tickets(safe_input, ctx):
     return {"tickets": ticket_service.get_tickets(ctx.user_id)}
 
 
+def _handle_get_wallet_status(safe_input, ctx):
+    return redash_client.get_wallet_status(ctx.user_id)
+
+
+def _handle_get_active_offers(safe_input, ctx):
+    return {"offers": offers_client.get_active_offers()}
+
+
+def _handle_get_queue_position(safe_input, ctx):
+    return redash_client.get_queue_position(ctx.user_id)
+
+
+def _handle_get_app_faq(safe_input, ctx):
+    return faq_client.search(safe_input.get("query", ""))
+
+
 REGISTRY = {
     "get_payment_status": _handle_get_payment_status,
     "get_booking_details": _handle_get_booking_details,
@@ -130,4 +148,8 @@ REGISTRY = {
     "log_feature_request": _handle_log_feature_request,
     "mark_issue_resolved": _handle_mark_issue_resolved,
     "get_tickets": _handle_get_tickets,
+    "get_wallet_status": _handle_get_wallet_status,
+    "get_active_offers": _handle_get_active_offers,
+    "get_queue_position": _handle_get_queue_position,
+    "get_app_faq": _handle_get_app_faq,
 }

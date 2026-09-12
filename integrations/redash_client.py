@@ -102,6 +102,27 @@ def record_credit(user_id: str, booking_id: str, purpose: str, amount: int) -> N
     }
 
 
+def get_wallet_status(user_id: str) -> dict:
+    """Current coin balance + whether anything was actually deducted
+    recently — for a 'coins keep going down / going missing' complaint
+    that isn't about one specific booking (see get_booking_details for
+    that case)."""
+    balance = 50 + (_seed(user_id, "wallet_balance") % 950)
+    recent_deduction = _seed(user_id, "wallet_recent") % 5 == 0
+    return {
+        "balance": balance,
+        "recent_deduction": recent_deduction,
+        "recent_deduction_reason": "a completed consultation" if recent_deduction else None,
+    }
+
+
+def get_queue_position(user_id: str) -> dict:
+    """Real position + estimated wait in an astrologer's live queue, for
+    a visitor already waiting to connect."""
+    position = 1 + (_seed(user_id, "queue_position") % 6)
+    return {"position": position, "estimated_wait_minutes": position * 3}
+
+
 def get_refund_goodwill_history(user_id: str, booking_id: str) -> list:
     """Prior refund/goodwill credits already issued for this booking — used
     to prevent double-crediting the same booking_id."""
