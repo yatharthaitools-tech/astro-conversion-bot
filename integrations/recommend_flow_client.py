@@ -8,19 +8,23 @@ Astrologer roster shape/data matches the real AstroLokal app (see the
 Figma reference): name, specialty tags, languages, per-minute coin
 pricing, live availability.
 
-The rendered card is ALWAYS the anonymous "top astrologers on the
-platform" showcase card — no specific name, no one person's photo, ever.
-The 3-avatar collage (static/avatars/collage-*.svg) is decorative brand
-imagery representing the roster as a category, not a claim that these are
-the specific people the visitor will be connected to — same reasoning as
-before, just styled as a group shot instead of a blank line of text. Even
-when the visitor named someone specific and search_astrologers resolved a
-real record (astrologer_id set below), that record is only used
-internally (real availability for notify_me_subscribe, and the id still
-reaches the native bridge so tapping Connect routes to the right person)
-— it never determines what the visitor sees on the card itself.
+The rendered card is ALWAYS the same fixed design asset
+(static/avatars/connect-card.png) — a single supplied image, shown
+as-is with no generated text overlaid on it. It's a showcase for the
+roster as a category, not a claim that these are the specific people the
+visitor will be connected to. Even when the visitor named someone
+specific and search_astrologers resolved a real record (astrologer_id
+set below), that record is only used internally (real availability for
+notify_me_subscribe, and the id still reaches the native bridge so
+tapping Connect routes to the right person) — it never changes what the
+visitor sees on the card itself, which is why `concern` no longer
+affects the image (there's nothing left to template into a static
+picture) — it's still accepted and still shapes the bot's own chat text,
+just not this asset.
 """
 import re
+
+CARD_IMAGE = "/static/avatars/connect-card.png"
 
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
 
@@ -69,90 +73,6 @@ CONNECT_LABELS = {
     "ml": "ഇപ്പോൾ ബന്ധിപ്പിക്കుக",
 }
 
-# Decorative showcase collage — real portrait photos representing
-# "astrologers on the platform" as a category. Always these same 3 images
-# regardless of who's actually matched; never implies a specific identity
-# (the front/center photo isn't "your astrologer", just the visual lead).
-COLLAGE_IMAGES = [
-    "/static/avatars/avatar_female.png",
-    "/static/avatars/avatar_male.png",
-    "/static/avatars/avatar_senior_male.png",
-]
-
-# Headline stays constant; only the subtitle is personalized per concern.
-CARD_TEXT = {
-    "en": {"title": "Get guidance from our best astrologers", "badge": "Top astrologers for you"},
-    "hi": {"title": "हमारे सबसे अच्छे ज्योतिषियों से सलाह लें", "badge": "आपके लिए टॉप ज्योतिषी"},
-    "ta": {"title": "எங்கள் சிறந்த ஜோதிடர்களிடமிருந்து வழிகாட்டுதல் பெறுங்கள்", "badge": "உங்களுக்கான சிறந்த ஜோதிடர்கள்"},
-    "te": {"title": "మా అత్యుత్తమ జ్యోతిష్కుల నుండి మార్గదర్శనం పొందండి", "badge": "మీ కోసం టాప్ జ్యోతిష్కులు"},
-    "ml": {"title": "ഞങ്ങളുടെ മികച്ച ജ്യോതിഷികളിൽ നിന്ന് മാർഗ്ഗനിർദ്ദേശം നേടൂ", "badge": "നിങ്ങൾക്കായി മികച്ച ജ്യോതിഷികൾ"},
-}
-
-# {concern} is substituted from CONCERN_WORDS below — never left as a raw
-# placeholder; falls back to the "general" entry when the concern is
-# unset or not recognized.
-SUBTITLE_TEMPLATE = {
-    "en": "We'll connect you with an astrologer who understands {concern}.",
-    "hi": "हम आपको ऐसे ज्योतिषी से जोड़ेंगे जो {concern} को अच्छे से समझते हैं।",
-    "ta": "{concern} புரிந்துகொள்ளும் ஜோதிடருடன் உங்களை இணைப்போம்.",
-    "te": "{concern} అర్థం చేసుకునే జ్యోతిష్కుడితో మిమ్మల్ని కనెక్ట్ చేస్తాము.",
-    "ml": "{concern} മനസ്സിലാക്കുന്ന ഒരു ജ്യോതിഷിയുമായി ഞങ്ങൾ നിങ്ങളെ ബന്ധിപ്പിക്കും.",
-}
-
-CONCERN_WORDS = {
-    "career": {
-        "en": "career pressure", "hi": "करियर की उलझन", "ta": "தொழில் கவலைகளை",
-        "te": "కెరీర్ ఒత్తిడిని", "ml": "കരിയർ സമ്മർദ്ദം",
-    },
-    "love": {
-        "en": "relationship stuff", "hi": "रिश्तों की उलझन", "ta": "உறவு பிரச்சினைகளை",
-        "te": "సంబంధాల సమస్యలను", "ml": "ബന്ധങ്ങളിലെ പ്രശ്‌നങ്ങൾ",
-    },
-    "finance": {
-        "en": "money worries", "hi": "पैसों की चिंता", "ta": "பண கவலைகளை",
-        "te": "డబ్బు ఆందోళనలను", "ml": "സാമ്പത്തിക ആശങ്കകൾ",
-    },
-    "marriage": {
-        "en": "marriage concerns", "hi": "शादी से जुड़ी बातें", "ta": "திருமண கவலைகளை",
-        "te": "వివాహ సమస్యలను", "ml": "വിവാഹ പ്രശ്‌നങ്ങൾ",
-    },
-    "general": {
-        "en": "what you're going through", "hi": "आपकी बात", "ta": "நீங்கள் சொல்வதை",
-        "te": "మీరు చెప్పింది", "ml": "നിങ്ങൾ പറയുന്നത്",
-    },
-}
-
-# 3 platform-level trust signals, ever — never a specific astrologer's own
-# stats, since no individual is ever named or pictured on the card.
-PLATFORM_TRUST = {
-    "en": [
-        {"icon": "years", "value": "10+ years", "label": "average experience"},
-        {"icon": "users", "value": "1Cr+", "label": "users helped"},
-        {"icon": "rating", "value": "4.8 ★", "label": "average rating"},
-    ],
-    "hi": [
-        {"icon": "years", "value": "10+ साल", "label": "औसत अनुभव"},
-        {"icon": "users", "value": "1Cr+", "label": "उपयोगकर्ता"},
-        {"icon": "rating", "value": "4.8 ★", "label": "औसत रेटिंग"},
-    ],
-    "ta": [
-        {"icon": "years", "value": "10+ ஆண்டுகள்", "label": "சராசரி அனுபவம்"},
-        {"icon": "users", "value": "1Cr+", "label": "பயனர்கள்"},
-        {"icon": "rating", "value": "4.8 ★", "label": "சராசரி மதிப்பீடு"},
-    ],
-    "te": [
-        {"icon": "years", "value": "10+ సంవత్సరాలు", "label": "సగటు అనుభవం"},
-        {"icon": "users", "value": "1Cr+", "label": "వినియోగదారులు"},
-        {"icon": "rating", "value": "4.8 ★", "label": "సగటు రేటింగ్"},
-    ],
-    "ml": [
-        {"icon": "years", "value": "10+ വർഷം", "label": "ശരാശരി പരിചയം"},
-        {"icon": "users", "value": "1Cr+", "label": "ഉപയോക്താക്കൾ"},
-        {"icon": "rating", "value": "4.8 ★", "label": "ശരാശരി റേറ്റിംഗ്"},
-    ],
-}
-
-
 def get_astrologer(astrologer_id: str):
     for a in ASTROLOGERS:
         if a["id"] == astrologer_id:
@@ -198,32 +118,21 @@ def pick_best_match():
 
 def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:
     """Builds the connect_popup UI action. The card the visitor sees is
-    always the same anonymous showcase card with platform trust stats —
-    astrologer_id (when the visitor named someone and search_astrologers
-    resolved them) only affects internal fields: real availability, and
-    the id passed to the native bridge so Connect still routes to that
-    person. It's never shown on the card. `concern` (career/love/finance/
-    marriage/general) only personalizes the subtitle wording — cosmetic,
-    never a business decision."""
+    always the same fixed design asset (CARD_IMAGE) — astrologer_id (when
+    the visitor named someone and search_astrologers resolved them) only
+    affects internal fields: real availability, and the id passed to the
+    native bridge so Connect still routes to that person. It's never
+    shown on the card. `concern` is accepted for the agent's own chat
+    text but no longer changes the card itself — there's no text left on
+    it to template, it's one fixed image."""
     label = CONNECT_LABELS.get(lang, CONNECT_LABELS["en"])
     named = get_astrologer(astrologer_id) if astrologer_id else None
     astrologer = named or pick_best_match()
-
-    card_text = CARD_TEXT.get(lang, CARD_TEXT["en"])
-    subtitle_template = SUBTITLE_TEMPLATE.get(lang, SUBTITLE_TEMPLATE["en"])
-    concern_words = CONCERN_WORDS.get(concern or "general", CONCERN_WORDS["general"])
-    concern_word = concern_words.get(lang, concern_words["en"])
 
     return {
         "type": "connect_popup",
         "display_mode": "specific" if named else "general",
         "label": label,
         "astrologer": astrologer,
-        "card": {
-            "badge": card_text["badge"],
-            "title": card_text["title"],
-            "subtitle": subtitle_template.format(concern=concern_word),
-            "images": COLLAGE_IMAGES,
-            "trust": PLATFORM_TRUST.get(lang, PLATFORM_TRUST["en"]),
-        },
+        "card": {"image": CARD_IMAGE},
     }

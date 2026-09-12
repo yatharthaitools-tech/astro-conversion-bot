@@ -7,20 +7,6 @@ const quickReplies = document.getElementById('quickReplies');
 
 const welcomeMessage = "Hi! I'm here to help you figure things out. What's been on your mind?";
 
-// Small inline icons for the connect card's Chat/Call buttons — no emoji,
-// matches the quick-reply chip icons for a consistent, premium feel.
-const CHAT_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 3.4A1.4 1.4 0 0 1 4 2h8a1.4 1.4 0 0 1 1.4 1.4v5A1.4 1.4 0 0 1 12 9.8H6.2L3 12.4V9.8h-.4A1.4 1.4 0 0 1 1 8.4v-5z"/></svg>';
-const CALL_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 2.3c.5-.4 1.2-.3 1.6.1l1.2 1.5c.3.4.3.9 0 1.3l-.7.8c.4.9 1 1.7 1.8 2.5.7.7 1.6 1.3 2.5 1.8l.8-.7c.4-.3.9-.3 1.3 0l1.5 1.2c.5.4.5 1.1.1 1.6l-.8.9c-.4.5-1.1.7-1.7.5-2.2-.7-4.2-1.9-5.9-3.6-1.6-1.6-2.9-3.6-3.6-5.9-.2-.6 0-1.3.5-1.7l.9-.8z"/></svg>';
-
-// Decorative icons for the connect card's stat row + badges.
-const SPARKLE_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M8 1l1.2 4.8L14 7l-4.8 1.2L8 13l-1.2-4.8L2 7l4.8-1.2z"/></svg>';
-const LOTUS_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 2c1 1.5 1 3 0 4-1-1-1-2.5 0-4zM4 4c1.5.5 2.5 1.7 2.7 3-1.3-.2-2.4-1.4-2.7-3zm8 0c-.3 1.6-1.4 2.8-2.7 3 .2-1.3 1.2-2.5 2.7-3zM8 6.2c1.8 0 3.2 1.3 3.2 3H4.8c0-1.7 1.4-3 3.2-3z"/></svg>';
-const STAT_ICONS = {
-  years: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="6" r="4"/><path d="M5.5 9.5L4 14l4-1.5L12 14l-1.5-4.5"/></svg>',
-  users: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><path d="M2 13c0-2.2 1.8-3.5 4-3.5s4 1.3 4 3.5"/><circle cx="11.5" cy="6.5" r="1.8"/><path d="M10 9.7c1.6.2 2.8 1.3 2.8 3.3"/></svg>',
-  rating: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1.5l1.9 4.1 4.4.5-3.3 3 .9 4.4L8 11.3l-3.9 2.2.9-4.4-3.3-3 4.4-.5z"/></svg>',
-};
-
 // A connect card showing up every single turn reads as spammy — require
 // at least one turn's gap since the last one before showing another.
 let turnsSinceLastCard = Infinity;
@@ -182,126 +168,52 @@ function triggerNativeConnect(mode, astrologer, isGeneric) {
 }
 
 // Stub for the app's real recommend-astrologer flow, which this repo has no
-// access to. The visible card is ALWAYS the same anonymous showcase card
-// with platform trust stats — no specific name, ever, even if the visitor
-// asked for someone specific. The 3-avatar collage is decorative brand
-// imagery for "astrologers on the platform" as a category, not a claim
-// about who the visitor will actually get — matching identity to a real
-// person is the app's own recommend system's job, not this bot's or this
-// card's; astrologer_id (when resolved) only travels under the hood to
-// the native bridge so Connect still routes correctly.
+// access to. The card is a single fixed design asset
+// (static/avatars/connect-card.png), shown completely unmodified — no
+// generated text, name or photo ever overlaid on it. Two invisible tap
+// targets sit over the Chat/Call areas already baked into that image so
+// the native bridge still fires; astrologer_id (when resolved) only
+// travels under the hood there, it never changes what's shown.
 function renderConnectCard(action) {
   const astrologer = action.astrologer;
   if (!astrologer) return;
   const isGeneric = action.display_mode !== 'specific';
-  const cardText = action.card || {};
+  const imageSrc = (action.card || {}).image;
+  if (!imageSrc) return;
 
   const card = document.createElement('div');
   card.className = 'message bot connect-card';
 
-  const topRow = document.createElement('div');
-  topRow.className = 'connect-top-row';
+  const frame = document.createElement('div');
+  frame.className = 'connect-card-frame';
 
-  if (cardText.images && cardText.images.length) {
-    const collage = document.createElement('div');
-    collage.className = 'connect-collage';
-    cardText.images.slice(0, 3).forEach((src, i) => {
-      const img = document.createElement('img');
-      img.className = `collage-avatar collage-avatar-${i + 1}`;
-      img.src = src;
-      img.alt = '';
-      collage.appendChild(img);
-    });
-    const badge = document.createElement('div');
-    badge.className = 'collage-badge';
-    badge.innerHTML = LOTUS_ICON;
-    collage.appendChild(badge);
-    topRow.appendChild(collage);
-  }
+  const img = document.createElement('img');
+  img.className = 'connect-card-image';
+  img.src = imageSrc;
+  img.alt = 'Connect with a top astrologer';
+  frame.appendChild(img);
 
-  const info = document.createElement('div');
-  info.className = 'connect-info';
+  const chatHit = document.createElement('button');
+  chatHit.type = 'button';
+  chatHit.className = 'connect-hitarea connect-hitarea-chat';
+  chatHit.setAttribute('aria-label', 'Chat');
 
-  if (cardText.badge) {
-    const pill = document.createElement('div');
-    pill.className = 'connect-badge-pill';
-    pill.innerHTML = `${SPARKLE_ICON}<span>${cardText.badge}</span>`;
-    info.appendChild(pill);
-  }
+  const callHit = document.createElement('button');
+  callHit.type = 'button';
+  callHit.className = 'connect-hitarea connect-hitarea-call';
+  callHit.setAttribute('aria-label', 'Call now');
 
-  const name = document.createElement('div');
-  name.className = 'connect-name';
-  name.textContent = cardText.title || 'Connect with a top astrologer';
-  info.appendChild(name);
-
-  if (cardText.subtitle) {
-    const meta = document.createElement('div');
-    meta.className = 'connect-meta';
-    meta.textContent = cardText.subtitle;
-    info.appendChild(meta);
-  }
-
-  topRow.appendChild(info);
-  card.appendChild(topRow);
-
-  if (cardText.trust && cardText.trust.length) {
-    const trust = document.createElement('div');
-    trust.className = 'connect-stats';
-    // Platform-level signals only — never a specific astrologer's own
-    // stats, since none is ever named on this card.
-    cardText.trust.forEach((stat, i) => {
-      if (i > 0) {
-        const divider = document.createElement('div');
-        divider.className = 'stat-divider';
-        trust.appendChild(divider);
-      }
-      const cell = document.createElement('div');
-      cell.className = 'stat';
-      const icon = document.createElement('div');
-      icon.className = 'stat-icon';
-      icon.innerHTML = STAT_ICONS[stat.icon] || '';
-      const value = document.createElement('div');
-      value.className = 'stat-value';
-      value.textContent = stat.value;
-      const label = document.createElement('div');
-      label.className = 'stat-label';
-      label.textContent = stat.label;
-      cell.appendChild(icon);
-      cell.appendChild(value);
-      cell.appendChild(label);
-      trust.appendChild(cell);
-    });
-    card.appendChild(trust);
-  }
-
-  // Chat/Call upfront, equal size, Call promoted through color only (not
-  // size) — matches the real app's own Chat/Call pair on each astrologer
-  // card, just without looking like an ad.
-  const actionRow = document.createElement('div');
-  actionRow.className = 'connect-actions';
-
-  const chatBtn = document.createElement('button');
-  chatBtn.className = 'connect-btn connect-btn-chat';
-  chatBtn.type = 'button';
-  chatBtn.innerHTML = `${CHAT_ICON}<span>Chat</span>`;
-
-  const callBtn = document.createElement('button');
-  callBtn.className = 'connect-btn connect-btn-call';
-  callBtn.type = 'button';
-  callBtn.innerHTML = `${CALL_ICON}<span>Call now</span>`;
-
-  [[chatBtn, 'chat'], [callBtn, 'call']].forEach(([btn, mode]) => {
+  [[chatHit, 'chat'], [callHit, 'call']].forEach(([btn, mode]) => {
     btn.addEventListener('click', () => {
-      chatBtn.disabled = true;
-      callBtn.disabled = true;
-      btn.innerHTML = '<span>...</span>';
+      chatHit.disabled = true;
+      callHit.disabled = true;
       triggerNativeConnect(mode, astrologer, isGeneric);
     });
   });
 
-  actionRow.appendChild(chatBtn);
-  actionRow.appendChild(callBtn);
-  card.appendChild(actionRow);
+  frame.appendChild(chatHit);
+  frame.appendChild(callHit);
+  card.appendChild(frame);
 
   chatBody.appendChild(card);
   chatBody.scrollTop = chatBody.scrollHeight;
