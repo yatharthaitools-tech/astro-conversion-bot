@@ -127,27 +127,27 @@ CONCERN_WORDS = {
 PLATFORM_TRUST = {
     "en": [
         {"icon": "years", "value": "10+ years", "label": "average experience"},
-        {"icon": "users", "value": "1,000+", "label": "users helped"},
+        {"icon": "users", "value": "1Cr+", "label": "users helped"},
         {"icon": "rating", "value": "4.8 ★", "label": "average rating"},
     ],
     "hi": [
         {"icon": "years", "value": "10+ साल", "label": "औसत अनुभव"},
-        {"icon": "users", "value": "1,000+", "label": "उपयोगकर्ता"},
+        {"icon": "users", "value": "1Cr+", "label": "उपयोगकर्ता"},
         {"icon": "rating", "value": "4.8 ★", "label": "औसत रेटिंग"},
     ],
     "ta": [
         {"icon": "years", "value": "10+ ஆண்டுகள்", "label": "சராசரி அனுபவம்"},
-        {"icon": "users", "value": "1,000+", "label": "பயனர்கள்"},
+        {"icon": "users", "value": "1Cr+", "label": "பயனர்கள்"},
         {"icon": "rating", "value": "4.8 ★", "label": "சராசரி மதிப்பீடு"},
     ],
     "te": [
         {"icon": "years", "value": "10+ సంవత్సరాలు", "label": "సగటు అనుభవం"},
-        {"icon": "users", "value": "1,000+", "label": "వినియోగదారులు"},
+        {"icon": "users", "value": "1Cr+", "label": "వినియోగదారులు"},
         {"icon": "rating", "value": "4.8 ★", "label": "సగటు రేటింగ్"},
     ],
     "ml": [
         {"icon": "years", "value": "10+ വർഷം", "label": "ശരാശരി പരിചയം"},
-        {"icon": "users", "value": "1,000+", "label": "ഉപയോക്താക്കൾ"},
+        {"icon": "users", "value": "1Cr+", "label": "ഉപയോക്താക്കൾ"},
         {"icon": "rating", "value": "4.8 ★", "label": "ശരാശരി റേറ്റിംഗ്"},
     ],
 }
