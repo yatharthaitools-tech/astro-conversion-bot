@@ -9,7 +9,7 @@ load_dotenv()
 
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
-from integrations import s3_client
+from integrations import recommend_flow_client, s3_client
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
@@ -98,6 +98,46 @@ NO_INFO = {
     'te': "దాని గురించి నాకు సమాచారం లేదు.",
     'ml': "അതിനെക്കുറിച്ച് എനിക്ക് വിവരമില്ല.",
 }
+
+# Code-level gate for the ONE hard, non-negotiable rule ("never answer a
+# prediction question") -- added after live testing showed the model
+# doesn't reliably call trigger_recommend_astrologer for this on its own
+# (verified via the raw Vertex AI response: finishReason STOP, no
+# functionCall part, despite the prompt saying it's mandatory). Same
+# precedent as astrohelp's own code-enforced rules: prompt-only isn't
+# trustworthy enough for something this deterministic. ta/te/ml keyword
+# lists are a v1 heuristic, not native-reviewed.
+PREDICTION_KEYWORDS = {
+    'en': [
+        'will i', 'will my', 'when will i', 'when will my', 'what will happen',
+        'what does my future hold', 'predict my', 'prediction', "today's horoscope",
+        'horoscope for today', 'rashifal', 'lucky number', 'lucky colour',
+        'lucky color', 'auspicious time', 'shubh muhurat', 'shubh mahurat',
+        'when am i getting married', 'when will i get a job', 'my fate',
+        'what does my chart say', 'what my chart',
+    ],
+    'hi': [
+        'क्या होगा', 'भविष्य', 'भाग्य', 'कब होगी', 'कब मिलेगी', 'कब मिलेगा',
+        'राशिफल', 'मुहूर्त', 'कब शादी होगी', 'भविष्यफल',
+    ],
+    'ta': ['எதிர்காலம்', 'ராசி பலன்', 'பலன் என்ன', 'எப்போது திருமணம்'],
+    'te': ['భవిష్యత్తు', 'జాతకం', 'రాశిఫలం', 'ఎప్పుడు పెళ్ళి'],
+    'ml': ['ഭാവി', 'ജാതകം', 'രാശിഫലം', 'എപ്പോൾ വിവാഹം'],
+}
+
+CONNECT_MESSAGES = {
+    'en': "That's exactly what our astrologers are here for -- let's get you connected.",
+    'hi': "यही तो हमारे ज्योतिषी के लिए है -- चलिए आपको जोड़ते हैं।",
+    'ta': "இதற்குத்தான் எங்கள் ஜோதிடர்கள் இருக்கிறார்கள் -- இணைக்கிறேன்.",
+    'te': "దీని కోసమే మా జ్యోతిష్కులు ఉన్నారు -- మిమ్మల్ని కనెక్ట్ చేస్తాను.",
+    'ml': "ഇതിനാണ് ഞങ്ങളുടെ ജ്യോതിഷികൾ ഉള്ളത് -- ബന്ധിപ്പിക്കട്ടെ.",
+}
+
+
+def is_prediction_intent(question, lang):
+    normalized = normalize_text(question)
+    keywords = PREDICTION_KEYWORDS.get(lang, PREDICTION_KEYWORDS['en'])
+    return any(keyword in normalized for keyword in keywords)
 
 quick_replies = [
     "I'm anxious about my future",
@@ -232,14 +272,35 @@ def ask():
     ctx = agent_context.resolve_session(payload, session_id, lang, history)
     ctx.last_attachment_url = find_last_attachment_url(question, history)
 
-    answer = agent_orchestrator.run_chat_turn(question, history, ctx, turn_number, past_warmup)
-    source = 'agent'
-    if not answer:
-        # Gemini unconfigured or the whole tool loop failed — everything
-        # else in the app still works, same posture as astrohelp.
-        intent = map_intent(question)
-        answer = rule_based_answer(question, lang, intent)
-        source = 'rule_based'
+    if is_prediction_intent(question, lang):
+        # Never let a prediction/fortune question reach the model at all —
+        # deflect before it runs. Added after live testing showed the
+        # agent's own trigger_recommend_astrologer call for this case
+        # isn't reliable enough on prompt instruction alone (see
+        # PREDICTION_KEYWORDS' comment above).
+        ctx.ui_action = recommend_flow_client.trigger(lang, None)
+        answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
+        source = 'prediction_deflect'
+    else:
+        answer = agent_orchestrator.run_chat_turn(question, history, ctx, turn_number, past_warmup)
+        source = 'agent'
+        if not answer:
+            # Gemini unconfigured or the whole tool loop failed — everything
+            # else in the app still works, same posture as astrohelp.
+            intent = map_intent(question)
+            answer = rule_based_answer(question, lang, intent)
+            source = 'rule_based'
+        elif not ctx.ui_action and past_warmup and map_intent(question) is not None:
+            # Safety net, not a substitute for the agent's own tool call:
+            # live testing showed the model doesn't reliably call
+            # trigger_recommend_astrologer for a general recognized concern
+            # even with an explicit prompt rule (unlike the prediction case
+            # above, this is too varied/conversational to hard-gate on
+            # content — but the core "every reply moves toward action"
+            # principle still needs the button to actually exist whenever
+            # the reply implies one). Only fires when the agent didn't
+            # already set an action itself.
+            ctx.ui_action = recommend_flow_client.trigger(lang, None)
 
     s3_client.log_event({
         'session_id': session_id,

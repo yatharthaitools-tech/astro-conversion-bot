@@ -8,6 +8,9 @@ Astrologer roster shape/data matches the real AstroLokal app (see the
 Figma reference): name, specialty tags, languages, per-minute coin
 pricing, live availability.
 """
+import re
+
+_TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
 
 ASTROLOGERS = [
     {
@@ -68,6 +71,31 @@ def get_astrologer(astrologer_id: str):
         if a["id"] == astrologer_id:
             return a
     return None
+
+
+def search(query: str) -> list:
+    """Fuzzy, partial-name lookup over the real roster — handles a bare
+    first name, a nickname, or an 'Astro <name>'-style title prefix.
+    Returns 0 matches (nobody by that name), 1 (unambiguous), or 2+
+    (genuinely ambiguous — caller must ask which one). Only 3 people
+    today so ambiguity is unlikely in practice, but the mechanism is real:
+    this is meant to scale to the actual roster, not this mock's size.
+    """
+    normalized = (query or "").lower().strip()
+    for title in _TITLE_WORDS:
+        normalized = re.sub(rf"\b{title}\b", "", normalized).strip()
+    if not normalized:
+        return []
+
+    matches = []
+    for a in ASTROLOGERS:
+        name_lower = a["name"].lower()
+        tokens = name_lower.split()
+        if normalized == name_lower or normalized in name_lower or any(
+            normalized == t or normalized in t for t in tokens
+        ):
+            matches.append({"id": a["id"], "name": a["name"]})
+    return matches
 
 
 def pick_best_match():

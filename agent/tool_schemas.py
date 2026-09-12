@@ -124,17 +124,41 @@ CREDIT_COINS = {
 # all, and silently drops astrologer_id even when the visitor named someone.
 _KNOWN_ASTROLOGERS = "mahalakshmi (Mahalakshmi), samrat (Samrat), nidhi (Nidhi)"
 
+SEARCH_ASTROLOGERS = {
+    "name": "search_astrologers",
+    "description": (
+        "Looks up the real roster by name — handles a bare first name, a "
+        "nickname, or an 'Astro <name>'-style title. ALWAYS call this the "
+        "moment the visitor names someone casually or partially, BEFORE "
+        "calling trigger_recommend_astrologer with an id — never guess who "
+        "they mean from memory. Returns a list of {id, name}: empty means "
+        "nobody by that name (fall back to a generic match instead — don't "
+        "say you don't have information, just pivot), one means unambiguous "
+        "(confirm briefly, then proceed), two or more means genuinely "
+        "ambiguous (ask a one-line question naming the options before "
+        "proceeding — never pick one silently)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "The name or partial name the visitor used, as they said it."}
+        },
+        "required": ["query"],
+    },
+}
+
 TRIGGER_RECOMMEND_ASTROLOGER = {
     "name": "trigger_recommend_astrologer",
     "description": (
         "Surfaces the Chat/Call connect entry point in the chat UI. "
         "Astrologer matching/ranking is NOT your job — a separate system "
         "owns that. Omit astrologer_id to let that system pick the best "
-        "match (the normal case). Only pass astrologer_id when the visitor "
-        "named a specific astrologer themselves — map their name to the "
-        f"matching id: {_KNOWN_ASTROLOGERS}. This is also the required "
-        "response to ANY prediction/fortune question — never answer the "
-        "prediction itself, always call this instead."
+        "match (the normal case). Only pass astrologer_id once you've "
+        "resolved exactly who the visitor means via search_astrologers — "
+        f"never guess directly from their wording. Known ids: "
+        f"{_KNOWN_ASTROLOGERS}. This is also the required response to ANY "
+        "prediction/fortune question — never answer the prediction itself, "
+        "always call this instead."
     ),
     "input_schema": {
         "type": "object",
@@ -281,6 +305,7 @@ ALL_TOOLS = [
     CHECK_REFUND_ELIGIBILITY,
     GET_LTV_TIER,
     CREDIT_COINS,
+    SEARCH_ASTROLOGERS,
     TRIGGER_RECOMMEND_ASTROLOGER,
     NOTIFY_ME_SUBSCRIBE,
     TRIGGER_PAYMENT_BOTTOMSHEET,

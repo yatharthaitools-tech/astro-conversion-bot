@@ -50,6 +50,11 @@ def _handle_credit_coins(safe_input, ctx):
     return ltv_service.request_credit(ctx.user_id, booking_id, reason, category)
 
 
+def _handle_search_astrologers(safe_input, ctx):
+    query = safe_input.get("query", "")
+    return {"matches": recommend_flow_client.search(query)}
+
+
 def _handle_trigger_recommend_astrologer(safe_input, ctx):
     astrologer_id = safe_input.get("astrologer_id")
     action = recommend_flow_client.trigger(ctx.language, astrologer_id)
@@ -117,6 +122,7 @@ REGISTRY = {
     "check_refund_eligibility": _handle_check_refund_eligibility,
     "get_ltv_tier": _handle_get_ltv_tier,
     "credit_coins": _handle_credit_coins,
+    "search_astrologers": _handle_search_astrologers,
     "trigger_recommend_astrologer": _handle_trigger_recommend_astrologer,
     "notify_me_subscribe": _handle_notify_me_subscribe,
     "trigger_payment_bottomsheet": _handle_trigger_payment_bottomsheet,
