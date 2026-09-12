@@ -98,8 +98,8 @@ async function sendToBot(text) {
   }
 }
 
-async function sendMessage() {
-  const text = (chatInput.value || '').trim();
+async function sendMessage(overrideText) {
+  const text = (overrideText !== undefined ? overrideText : chatInput.value || '').trim();
   if (!text) return;
 
   // Quick replies are an opening prompt, not a persistent menu — once the
@@ -255,8 +255,6 @@ photoInput.addEventListener('change', () => {
 
 document.querySelectorAll('.quick-reply').forEach((button) => {
   button.addEventListener('click', () => {
-    const value = button.getAttribute('data-text');
-    chatInput.value = value;
-    chatInput.focus();
+    sendMessage(button.getAttribute('data-text'));
   });
 });
