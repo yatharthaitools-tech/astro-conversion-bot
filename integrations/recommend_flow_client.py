@@ -69,14 +69,14 @@ CONNECT_LABELS = {
     "ml": "ഇപ്പോൾ ബന്ധിപ്പിക്കుக",
 }
 
-# Decorative showcase collage — 3 illustrated (not real) portraits
-# representing "astrologers on the platform" as a category. Always these
-# same 3 images regardless of who's actually matched; never implies a
-# specific identity.
+# Decorative showcase collage — real portrait photos representing
+# "astrologers on the platform" as a category. Always these same 3 images
+# regardless of who's actually matched; never implies a specific identity
+# (the front/center photo isn't "your astrologer", just the visual lead).
 COLLAGE_IMAGES = [
-    "/static/avatars/collage-1.svg",
-    "/static/avatars/collage-2.svg",
-    "/static/avatars/collage-3.svg",
+    "/static/avatars/avatar_female.png",
+    "/static/avatars/avatar_male.png",
+    "/static/avatars/avatar_senior_male.png",
 ]
 
 # Headline stays constant; only the subtitle is personalized per concern.

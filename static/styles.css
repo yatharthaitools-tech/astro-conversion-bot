@@ -220,9 +220,11 @@ button, input { font: inherit; }
   gap: 12px;
 }
 
-/* 3 overlapping illustrated portraits standing in for "astrologers on the
-   platform" as a category — decorative brand imagery, not a claim that
-   these specific people are who the visitor gets. */
+/* 3 overlapping portraits standing in for "astrologers on the platform"
+   as a category — decorative brand imagery, not a claim that these
+   specific people are who the visitor gets. The source PNGs already
+   carry their own circular gradient ring + soft shadow, so no extra
+   border/background is added here — that would just clash. */
 .connect-collage {
   position: relative;
   width: 104px;
@@ -231,15 +233,11 @@ button, input { font: inherit; }
 }
 .collage-avatar {
   position: absolute;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2.5px solid white;
-  box-shadow: 0 2px 8px rgba(42, 28, 20, 0.12);
-  background: rgba(255, 111, 61, 0.15);
+  object-fit: contain;
 }
-.collage-avatar-1 { width: 54px; height: 54px; left: 25px; top: 18px; z-index: 3; }
-.collage-avatar-2 { width: 44px; height: 44px; left: 0; top: 0; z-index: 2; }
-.collage-avatar-3 { width: 44px; height: 44px; left: 58px; top: 0; z-index: 1; }
+.collage-avatar-1 { width: 58px; height: 58px; left: 23px; top: 16px; z-index: 3; }
+.collage-avatar-2 { width: 46px; height: 46px; left: -2px; top: 0; z-index: 2; }
+.collage-avatar-3 { width: 46px; height: 46px; left: 58px; top: 0; z-index: 1; }
 .collage-badge {
   position: absolute;
   left: 40px;
