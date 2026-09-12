@@ -140,17 +140,17 @@ function triggerNativeConnect(mode, astrologer, isGeneric) {
 }
 
 // Stub for the app's real recommend-astrologer flow, which this repo has no
-// access to. Matching is that system's job, not this bot's — so by default
-// ("general" mode) the card never reveals a name/photo, just a plain,
-// honest line (no invented stats — there's no one specific to attach them
-// to). Only when the visitor asked for someone by name ("specific" mode)
-// does the real card show, and only then with real trust signals (years,
-// rating + consultation count) pulled straight from the astrologer record —
-// never a generic claim like "trusted by thousands".
+// access to. The visible card is ALWAYS the same anonymous "connect with a
+// top astrologer" card with platform trust stats — no name, no photo,
+// ever, even if the visitor asked for someone specific by name. Matching
+// identity to a real person is the app's own recommend system's job, not
+// this bot's or this card's; astrologer_id (when resolved) only travels
+// under the hood to the native bridge so Connect still routes correctly.
 function renderConnectCard(action) {
   const astrologer = action.astrologer;
   if (!astrologer) return;
   const isGeneric = action.display_mode !== 'specific';
+  const cardText = action.card || {};
 
   const card = document.createElement('div');
   card.className = 'message bot connect-card';
@@ -158,68 +158,33 @@ function renderConnectCard(action) {
   const info = document.createElement('div');
   info.className = 'connect-info';
 
-  if (isGeneric) {
-    const name = document.createElement('div');
-    name.className = 'connect-name';
-    name.textContent = (action.generic && action.generic.title) || 'A good match is online right now';
+  const name = document.createElement('div');
+  name.className = 'connect-name';
+  name.textContent = cardText.title || 'Connect with a top astrologer';
+  info.appendChild(name);
+
+  if (cardText.subtitle) {
     const meta = document.createElement('div');
     meta.className = 'connect-meta';
-    meta.textContent = (action.generic && action.generic.subtitle) || '';
-    info.appendChild(name);
-    if (meta.textContent) info.appendChild(meta);
+    meta.textContent = cardText.subtitle;
+    info.appendChild(meta);
+  }
 
-    // A real (if anonymous) face, not a blank slot — matching identity
-    // itself is the app's own recommend system's job, not this bot's, so
-    // no name/rating is attached, just a portrait from the shared pool.
-    const genericImage = action.generic && action.generic.image;
-    if (genericImage) {
-      const top = document.createElement('div');
-      top.className = 'connect-top';
-      const avatar = document.createElement('img');
-      avatar.className = 'avatar';
-      avatar.src = genericImage;
-      avatar.alt = '';
-      top.appendChild(avatar);
-      top.appendChild(info);
-      card.appendChild(top);
-    } else {
-      card.appendChild(info);
-    }
-  } else {
-    const name = document.createElement('div');
-    name.className = 'connect-name';
-    name.textContent = astrologer.name;
-
+  if (cardText.trust && cardText.trust.length) {
     const trust = document.createElement('div');
     trust.className = 'connect-trust';
-    // 2-3 real signals only: experience, rating + how many consultations —
-    // exactly what the backend record has, nothing inferred or inflated.
-    const signals = [astrologer.experience, `${astrologer.rating} ★ · ${astrologer.consultations}`].filter(Boolean);
-    signals.forEach((text) => {
+    // Exactly the 2 platform-level signals meant to build trust here —
+    // never a specific astrologer's own stats, since none is ever named.
+    cardText.trust.forEach((text) => {
       const chip = document.createElement('span');
       chip.className = 'trust-chip';
       chip.textContent = text;
       trust.appendChild(chip);
     });
-
-    const meta = document.createElement('div');
-    meta.className = 'connect-meta';
-    meta.textContent = astrologer.availability;
-
-    info.appendChild(name);
     info.appendChild(trust);
-    info.appendChild(meta);
-
-    const top = document.createElement('div');
-    top.className = 'connect-top';
-    const avatar = document.createElement('img');
-    avatar.className = 'avatar';
-    avatar.src = astrologer.image;
-    avatar.alt = astrologer.name;
-    top.appendChild(avatar);
-    top.appendChild(info);
-    card.appendChild(top);
   }
+
+  card.appendChild(info);
 
   // Chat/Call upfront, equal size, Call promoted through color only (not
   // size) — matches the real app's own Chat/Call pair on each astrologer

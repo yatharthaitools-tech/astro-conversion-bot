@@ -8,19 +8,17 @@ Astrologer roster shape/data matches the real AstroLokal app (see the
 Figma reference): name, specialty tags, languages, per-minute coin
 pricing, live availability.
 
-Portraits are 6 locally-hosted illustrated avatars (static/avatars/*.svg) —
-not tied to any external "astrologer photo" URL, and not literal photos of
-real people. The 3 named mock astrologers each keep one fixed portrait;
-the anonymous "recommend from the pool" flow (no name shown, since real
-matching isn't this bot's job) picks one of the 6 at random per turn, so
-it still feels like a real person without claiming to be a specific one.
+The rendered card is ALWAYS the anonymous "connect with a top astrologer
+on the platform" card — no name, no photo, ever. Even when the visitor
+named someone specific and search_astrologers resolved a real record
+(astrologer_id set below), that record is only used internally (real
+availability for notify_me_subscribe, and the id still reaches the native
+bridge so tapping Connect routes to the right person) — it never
+determines what the visitor sees on the card itself.
 """
-import random
 import re
 
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
-
-AVATAR_POOL = [f"/static/avatars/{n}.svg" for n in range(1, 7)]
 
 ASTROLOGERS = [
     {
@@ -34,7 +32,6 @@ ASTROLOGERS = [
         "price": "10/min",
         "price_original": "56/min",
         "availability": "Available now",
-        "image": AVATAR_POOL[0],
     },
     {
         "id": "samrat",
@@ -47,7 +44,6 @@ ASTROLOGERS = [
         "price": "12/min",
         "price_original": None,
         "availability": "Busy, wait ~15 min",
-        "image": AVATAR_POOL[1],
     },
     {
         "id": "nidhi",
@@ -60,7 +56,6 @@ ASTROLOGERS = [
         "price": "15/min",
         "price_original": "25/min",
         "availability": "Available now",
-        "image": AVATAR_POOL[2],
     },
 ]
 
@@ -70,15 +65,25 @@ CONNECT_LABELS = {
     "ml": "ഇപ്പോൾ ബന്ധിപ്പിക്കുക",
 }
 
-# Kept modest on purpose — there's no real astrologer named here, so no
-# invented stat/trust-claim is attached to this variant. Just a plain,
-# honest line that reads as a continuation of the conversation.
-GENERIC_CARD_TEXT = {
-    "en": {"title": "A good match is online right now", "subtitle": "Picked based on what you've shared"},
-    "hi": {"title": "अभी एक अच्छा मैच उपलब्ध है", "subtitle": "आपकी बात के आधार पर चुना गया"},
-    "ta": {"title": "பொருத்தமான ஒருவர் இப்போது இருக்கிறார்", "subtitle": "நீங்கள் பகிர்ந்ததன் அடிப்படையில் தேர்ந்தெடுக்கப்பட்டது"},
-    "te": {"title": "సరైన వ్యక్తి ఇప్పుడు అందుబాటులో ఉన్నారు", "subtitle": "మీరు చెప్పిన దాని ఆధారంగా ఎంచుకోబడింది"},
-    "ml": {"title": "അനുയോജ്യമായ ഒരാൾ ഇപ്പോൾ ഓൺലൈനിലുണ്ട്", "subtitle": "നിങ്ങൾ പറഞ്ഞതിന്റെ അടിസ്ഥാനത്തിൽ തിരഞ്ഞെടുത്തത്"},
+# The one and only card copy — platform-level, identical whether or not a
+# specific astrologer was resolved internally, since no individual is ever
+# named or pictured on the card itself.
+CARD_TEXT = {
+    "en": {"title": "Connect with a top astrologer", "subtitle": "Available on AstroLokal right now"},
+    "hi": {"title": "एक टॉप ज्योतिषी से जुड़ें", "subtitle": "अभी AstroLokal पर उपलब्ध"},
+    "ta": {"title": "சிறந்த ஜோதிடருடன் இணையுங்கள்", "subtitle": "இப்போது AstroLokal-இல் கிடைக்கிறார்கள்"},
+    "te": {"title": "అత్యుత్తమ జ్యోతిష్కుడితో కనెక్ట్ అవ్వండి", "subtitle": "ఇప్పుడు AstroLokal‌లో అందుబాటులో ఉన్నారు"},
+    "ml": {"title": "മികച്ച ജ്യോതിഷിയുമായി ബന്ധപ്പെടുക", "subtitle": "ഇപ്പോൾ AstroLokal-ൽ ലഭ്യമാണ്"},
+}
+
+# Only two trust signals, ever — platform-level (years the roster's been
+# running, users served), never a specific astrologer's own stats.
+PLATFORM_TRUST = {
+    "en": ["10+ years experience", "1,000+ users helped"],
+    "hi": ["10+ साल का अनुभव", "1,000+ उपयोगकर्ता"],
+    "ta": ["10+ ஆண்டுகள் அனுபவம்", "1,000+ பயனர்கள்"],
+    "te": ["10+ సంవత్సరాల అనుభవం", "1,000+ మంది వినియోగదారులు"],
+    "ml": ["10+ വർഷത്തെ പരിചയം", "1,000+ ഉപയോക്താക്കൾ"],
 }
 
 
@@ -96,6 +101,9 @@ def search(query: str) -> list:
     (genuinely ambiguous — caller must ask which one). Only 3 people
     today so ambiguity is unlikely in practice, but the mechanism is real:
     this is meant to scale to the actual roster, not this mock's size.
+    Still useful even though the card never shows a name: it's what lets
+    the bot correctly resolve an id for availability checks and for the
+    native bridge to route to the right person on Connect.
     """
     normalized = (query or "").lower().strip()
     for title in _TITLE_WORDS:
@@ -123,26 +131,22 @@ def pick_best_match():
 
 
 def trigger(lang: str, astrologer_id: str = None) -> dict:
-    """Builds the connect_popup UI action. astrologer_id set (visitor asked
-    for someone by name) -> 'specific' display, real name/photo. Omitted
-    -> 'general' display: no name revealed (matching isn't this bot's
-    job), but a random portrait from AVATAR_POOL so it still reads as a
-    real person rather than a faceless placeholder."""
+    """Builds the connect_popup UI action. The card the visitor sees is
+    always the same anonymous "connect with a top astrologer" card with
+    platform trust stats — astrologer_id (when the visitor named someone
+    and search_astrologers resolved them) only affects internal fields:
+    real availability, and the id passed to the native bridge so Connect
+    still routes to that person. It's never shown on the card."""
     label = CONNECT_LABELS.get(lang, CONNECT_LABELS["en"])
     named = get_astrologer(astrologer_id) if astrologer_id else None
-    if named:
-        return {
-            "type": "connect_popup",
-            "display_mode": "specific",
-            "label": label,
-            "astrologer": named,
-        }
-    generic = dict(GENERIC_CARD_TEXT.get(lang, GENERIC_CARD_TEXT["en"]))
-    generic["image"] = random.choice(AVATAR_POOL)
+    astrologer = named or pick_best_match()
     return {
         "type": "connect_popup",
-        "display_mode": "general",
+        "display_mode": "specific" if named else "general",
         "label": label,
-        "astrologer": pick_best_match(),
-        "generic": generic,
+        "astrologer": astrologer,
+        "card": {
+            **CARD_TEXT.get(lang, CARD_TEXT["en"]),
+            "trust": PLATFORM_TRUST.get(lang, PLATFORM_TRUST["en"]),
+        },
     }
