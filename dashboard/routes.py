@@ -9,11 +9,21 @@ handling it.
 """
 from flask import Blueprint, redirect, render_template, request, url_for
 
-from dashboard import auth, db
+from dashboard import auth, db, health
 
 bp = Blueprint('dashboard', __name__, url_prefix='/admin', template_folder='templates')
 
 PAGE_SIZE = 25
+
+
+@bp.context_processor
+def inject_health():
+    # Only actually runs the check when an admin page is being rendered
+    # (not on every /ask), and only once logged in — no point surfacing
+    # this to an unauthenticated visitor hitting /admin/login.
+    if auth.is_logged_in():
+        return {'system_health': health.check()}
+    return {'system_health': None}
 
 
 @bp.route('/login', methods=['GET', 'POST'])
@@ -94,4 +104,53 @@ def analytics():
     return render_template(
         'analytics.html', stats=stats, filters={'from': date_from or '', 'to': date_to or ''},
         show_nav=True, active='analytics',
+    )
+
+
+@bp.route('/tickets')
+@auth.admin_required
+def tickets():
+    page = max(1, request.args.get('page', 1, type=int))
+    status = request.args.get('status') or None
+    category = request.args.get('category') or None
+    date_from = request.args.get('from') or None
+    date_to = request.args.get('to') or None
+
+    rows = db.list_tickets(
+        limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE,
+        status=status, category=category, date_from=date_from, date_to=date_to,
+    )
+    total = db.count_tickets(status=status, category=category, date_from=date_from, date_to=date_to)
+
+    return render_template(
+        'tickets.html',
+        tickets=rows,
+        page=page,
+        total_pages=max(1, -(-total // PAGE_SIZE)),
+        total=total,
+        statuses=db.TICKET_STATUSES,
+        filters={'status': status or '', 'category': category or '', 'from': date_from or '', 'to': date_to or ''},
+        show_nav=True, active='tickets',
+    )
+
+
+@bp.route('/tickets/<int:ticket_id>', methods=['GET', 'POST'])
+@auth.admin_required
+def ticket_detail(ticket_id):
+    if request.method == 'POST':
+        new_status = request.form.get('status')
+        note = request.form.get('note') or None
+        if new_status in db.TICKET_STATUSES:
+            db.update_ticket_status(ticket_id, new_status, note)
+        return redirect(url_for('dashboard.ticket_detail', ticket_id=ticket_id))
+
+    ticket = db.get_ticket(ticket_id)
+    if not ticket:
+        return render_template(
+            'ticket_detail.html', ticket=None, ticket_id=ticket_id,
+            statuses=db.TICKET_STATUSES, show_nav=True, active='tickets',
+        ), 404
+    return render_template(
+        'ticket_detail.html', ticket=ticket, ticket_id=ticket_id,
+        statuses=db.TICKET_STATUSES, show_nav=True, active='tickets',
     )

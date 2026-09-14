@@ -2,6 +2,7 @@
 {% block title %}Analytics — AstroLokal Admin{% endblock %}
 {% block content %}
 <h1>Analytics</h1>
+<p class="ticket-subline">How the bot is doing across every conversation, not just tickets.</p>
 
 <form method="get" class="filter-bar">
   <input type="date" name="from" value="{{ filters.from }}" placeholder="From" />
@@ -12,20 +13,82 @@
 
 <div class="kpi-grid">
   <div class="kpi-card">
-    <div class="kpi-value">{{ stats.total_conversations }}</div>
-    <div class="kpi-label">conversations</div>
+    <div class="kpi-value">{{ stats.resolved_by_bot }}</div>
+    <div class="kpi-label">resolved by bot</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-value">{{ stats.total_turns }}</div>
-    <div class="kpi-label">bot replies</div>
+    <div class="kpi-value">{{ stats.resolved_by_escalation }}</div>
+    <div class="kpi-label">escalated to a ticket</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-value">{{ stats.cards_shown }}</div>
-    <div class="kpi-label">connect cards shown</div>
+    <div class="kpi-value">{{ stats.avg_rating if stats.avg_rating is not none else '—' }}</div>
+    <div class="kpi-label">avg. CSAT{% if stats.rated_count %} &middot; {{ stats.rated_count }} ratings{% endif %}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.pct_rated }}%</div>
+    <div class="kpi-label">chats rated</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.open_tickets }}</div>
+    <div class="kpi-label">open tickets ({{ stats.total_tickets }} total)</div>
   </div>
 </div>
 
 <div class="panel-grid">
+  <div class="panel panel-wide">
+    <h2>Conversations — week by week</h2>
+    <div class="trend-legend"><span><i class="dot" style="background:var(--sun-dark)"></i>Started</span><span><i class="dot" style="background:#6b9e78"></i>Resolved</span></div>
+    {% set trend = stats.conversation_trend.weekly %}
+    {% set max_v = (trend | map(attribute='raised') | list | max) if trend else 1 %}
+    <div class="trend-chart">
+      {% for row in trend %}
+        <div class="trend-bucket">
+          <div class="trend-bars">
+            <div class="trend-bar trend-bar-raised" style="height: {{ (row.raised / (max_v or 1) * 130) | round }}px"></div>
+            <div class="trend-bar trend-bar-resolved" style="height: {{ (row.resolved / (max_v or 1) * 130) | round }}px"></div>
+          </div>
+          <div class="trend-label">{{ row.bucket[-2:] }}</div>
+        </div>
+      {% else %}
+        <p class="empty-state">No data yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>Tickets — week by week</h2>
+    <div class="trend-legend"><span><i class="dot" style="background:var(--sun-dark)"></i>Raised</span><span><i class="dot" style="background:#6b9e78"></i>Resolved</span></div>
+    {% set ttrend = stats.ticket_trend.weekly %}
+    {% set tmax = (ttrend | map(attribute='raised') | list | max) if ttrend else 1 %}
+    <div class="trend-chart">
+      {% for row in ttrend %}
+        <div class="trend-bucket">
+          <div class="trend-bars">
+            <div class="trend-bar trend-bar-raised" style="height: {{ (row.raised / (tmax or 1) * 130) | round }}px"></div>
+            <div class="trend-bar trend-bar-resolved" style="height: {{ (row.resolved / (tmax or 1) * 130) | round }}px"></div>
+          </div>
+          <div class="trend-label">{{ row.bucket[-2:] }}</div>
+        </div>
+      {% else %}
+        <p class="empty-state">No tickets yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>Most common ticket categories</h2>
+    {% set cat_max = (stats.ticket_categories | map(attribute='count') | list | max) if stats.ticket_categories else 1 %}
+    {% for row in stats.ticket_categories %}
+      <div class="issue-bar-row">
+        <div class="issue-bar-label">{{ row.category }}</div>
+        <div class="issue-bar-track"><div class="issue-bar-fill" style="width: {{ (row.count / (cat_max or 1) * 100) | round }}%"></div></div>
+        <div class="issue-bar-count">{{ row.count }}</div>
+      </div>
+    {% else %}
+      <p class="empty-state">No tickets yet.</p>
+    {% endfor %}
+  </div>
+
   <div class="panel">
     <h2>Reply source</h2>
     <table class="admin-table">

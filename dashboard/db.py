@@ -1,29 +1,37 @@
 """SQLite persistence for the admin dashboard — conversations, messages,
-and per-turn tool-call traces.
+tool-call traces, tickets, and ticket status history.
 
 This is a NEW store, separate from integrations/s3_client.py's existing
 fire-and-forget event log (kept as-is, still feeds Redash). Nothing here
 replaces that — this is the queryable local store the admin dashboard
 actually reads from, mirroring what astrohelp's chat_sessions/
-chat_messages tables do for its own admin dashboard, just with SQLite
-instead of Postgres (this app's scale doesn't need more, and it's zero
-setup — swap the connection layer for Postgres later if it ever does).
+chat_messages/tickets tables do for its own admin dashboard, just with
+SQLite instead of Postgres (this app's scale doesn't need more, and it's
+zero setup — swap the connection layer for Postgres later if it ever does).
 
 Schema:
     conversations(session_id PK, user_id, first_seen_at, last_seen_at,
-                   turn_count, last_language)
+                   turn_count, last_language, resolved_by, resolved_at,
+                   rating, rated_at)
     messages(id PK, session_id FK, role, text, source, tool_trace,
              card_shown, created_at)
+    tickets(id PK, ticket_ref, session_id FK, user_id, category,
+            sub_category, description, evidence_url, ltv_tier, status,
+            created_at, resolved_at)
+    ticket_status_history(id PK, ticket_id FK, status, note, changed_at)
 
 `tool_trace` is stored as a JSON string (list of {"tool": str, "ok": bool}
 dicts, exactly ctx.trace's shape) — SQLite has no native array/JSON type,
 and this data is only ever read back for display, never queried on.
 """
 import json
+import logging
 import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get('DASHBOARD_DB_PATH', 'dashboard.db')
 
@@ -34,7 +42,11 @@ CREATE TABLE IF NOT EXISTS conversations (
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     turn_count INTEGER NOT NULL DEFAULT 0,
-    last_language TEXT
+    last_language TEXT,
+    resolved_by TEXT,
+    resolved_at TEXT,
+    rating INTEGER,
+    rated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -48,10 +60,45 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_ref TEXT UNIQUE NOT NULL,
+    session_id TEXT REFERENCES conversations(session_id),
+    user_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    sub_category TEXT,
+    description TEXT,
+    evidence_url TEXT,
+    ltv_tier TEXT,
+    status TEXT NOT NULL DEFAULT 'Open',
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ticket_status_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+    status TEXT NOT NULL,
+    note TEXT,
+    changed_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_last_seen ON conversations(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at);
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 """
+
+# Columns added after the initial release — ALTER TABLE ADD COLUMN against
+# an existing (already-deployed) dashboard.db that predates them. Safe to
+# re-run: a "duplicate column" error just means it's already there.
+_MIGRATIONS = [
+    "ALTER TABLE conversations ADD COLUMN resolved_by TEXT",
+    "ALTER TABLE conversations ADD COLUMN resolved_at TEXT",
+    "ALTER TABLE conversations ADD COLUMN rating INTEGER",
+    "ALTER TABLE conversations ADD COLUMN rated_at TEXT",
+]
 
 
 @contextmanager
@@ -69,20 +116,55 @@ def _connect():
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        for stmt in _MIGRATIONS:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def ensure_conversation(session_id: str, user_id: str) -> None:
+    """Guarantees a conversations row exists for this session before the
+    agent's tool loop runs. record_turn() (which does the real turn_count/
+    last_seen_at upsert) only runs after that loop finishes, but a tool
+    called mid-loop — create_support_ticket — inserts into tickets with a
+    FK reference to conversations.session_id. Without this, a ticket
+    raised on a session's very first turn would fail that FK check."""
+    now = _now()
+    try:
+        with _connect() as conn:
+            conn.execute(
+                """INSERT INTO conversations (session_id, user_id, first_seen_at, last_seen_at, turn_count)
+                   VALUES (?, ?, ?, ?, 0)
+                   ON CONFLICT(session_id) DO NOTHING""",
+                (session_id, user_id, now, now),
+            )
+    except sqlite3.Error:
+        logger.warning("ensure_conversation failed for session %s", session_id, exc_info=True)
+
+
 def record_turn(session_id: str, user_id: str, question: str, answer: str,
                 language: str, source: str, tool_trace: list, card_shown: bool) -> None:
     """Called once per /ask turn — writes the user's question and the
     bot's answer as two message rows, and upserts the conversation's
-    summary row. Best-effort: a logging failure must never break the
-    visitor's chat reply, same posture as s3_client.log_event."""
+    summary row. Also detects a resolution outcome (mark_issue_resolved
+    -> resolved by the bot itself; create_support_ticket -> escalated to
+    a human) straight from this turn's tool trace. Best-effort: a logging
+    failure must never break the visitor's chat reply, same posture as
+    s3_client.log_event."""
     now = _now()
     trace_json = json.dumps(tool_trace or [])
+    resolved_by = None
+    for call in (tool_trace or []):
+        if call.get('tool') == 'mark_issue_resolved' and call.get('ok'):
+            resolved_by = 'bot'
+        elif call.get('tool') == 'create_support_ticket' and call.get('ok'):
+            resolved_by = 'escalated'
+
     try:
         with _connect() as conn:
             conn.execute(
@@ -94,6 +176,11 @@ def record_turn(session_id: str, user_id: str, question: str, answer: str,
                        last_language = excluded.last_language""",
                 (session_id, user_id, now, now, language),
             )
+            if resolved_by:
+                conn.execute(
+                    "UPDATE conversations SET resolved_by = ?, resolved_at = ? WHERE session_id = ?",
+                    (resolved_by, now, session_id),
+                )
             conn.execute(
                 "INSERT INTO messages (session_id, role, text, created_at) VALUES (?, 'user', ?, ?)",
                 (session_id, question, now),
@@ -104,7 +191,21 @@ def record_turn(session_id: str, user_id: str, question: str, answer: str,
                 (session_id, answer, source, trace_json, int(bool(card_shown)), now),
             )
     except sqlite3.Error:
-        pass
+        logger.warning("record_turn failed for session %s", session_id, exc_info=True)
+
+
+def record_rating(session_id: str, rating: int) -> bool:
+    """Called by the /feedback endpoint once the visitor rates the chat."""
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "UPDATE conversations SET rating = ?, rated_at = ? WHERE session_id = ?",
+                (rating, _now(), session_id),
+            )
+            return cur.rowcount > 0
+    except sqlite3.Error:
+        logger.warning("record_rating failed for session %s", session_id, exc_info=True)
+        return False
 
 
 def list_conversations(limit: int = 50, offset: int = 0, language: str = None,
@@ -162,11 +263,132 @@ def get_conversation(session_id: str) -> dict:
         return result
 
 
+# --- Tickets -----------------------------------------------------------
+
+def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
+                   sub_category: str, description: str, evidence_url: str, ltv_tier: str) -> None:
+    now = _now()
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO tickets (ticket_ref, session_id, user_id, category, sub_category,
+                                         description, evidence_url, ltv_tier, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?)""",
+                (ticket_ref, session_id, user_id, category, sub_category, description, evidence_url, ltv_tier, now),
+            )
+            conn.execute(
+                "INSERT INTO ticket_status_history (ticket_id, status, note, changed_at) VALUES (?, 'Open', 'Ticket created', ?)",
+                (cur.lastrowid, now),
+            )
+    except sqlite3.Error:
+        logger.warning("record_ticket failed for ticket %s", ticket_ref, exc_info=True)
+
+
+TICKET_STATUSES = ["Open", "In Progress", "Resolved", "Closed"]
+
+
+def list_tickets(limit: int = 50, offset: int = 0, status: str = None,
+                  category: str = None, date_from: str = None, date_to: str = None) -> list:
+    query = "SELECT * FROM tickets WHERE 1=1"
+    params = []
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    if date_from:
+        query += " AND created_at >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND created_at <= ?"
+        params.append(date_to + "T23:59:59")
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def count_tickets(status: str = None, category: str = None, date_from: str = None, date_to: str = None) -> int:
+    query = "SELECT COUNT(*) FROM tickets WHERE 1=1"
+    params = []
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    if date_from:
+        query += " AND created_at >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND created_at <= ?"
+        params.append(date_to + "T23:59:59")
+    with _connect() as conn:
+        return conn.execute(query, params).fetchone()[0]
+
+
+def get_ticket(ticket_id: int) -> dict:
+    with _connect() as conn:
+        ticket = conn.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if not ticket:
+            return None
+        history = conn.execute(
+            "SELECT * FROM ticket_status_history WHERE ticket_id = ? ORDER BY id ASC", (ticket_id,)
+        ).fetchall()
+        result = dict(ticket)
+        result['history'] = [dict(h) for h in history]
+        return result
+
+
+def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
+    now = _now()
+    try:
+        with _connect() as conn:
+            resolved_at = now if status in ("Resolved", "Closed") else None
+            conn.execute(
+                "UPDATE tickets SET status = ?, resolved_at = COALESCE(?, resolved_at) WHERE id = ?",
+                (status, resolved_at, ticket_id),
+            )
+            conn.execute(
+                "INSERT INTO ticket_status_history (ticket_id, status, note, changed_at) VALUES (?, ?, ?, ?)",
+                (ticket_id, status, note, now),
+            )
+            return True
+    except sqlite3.Error:
+        logger.warning("update_ticket_status failed for ticket %s", ticket_id, exc_info=True)
+        return False
+
+
+# --- Analytics -----------------------------------------------------------
+
+def _week_month_trend(conn, table: str, date_col: str, resolved_col: str) -> dict:
+    """Shared helper: {'weekly': [...], 'monthly': [...]} of {bucket, raised,
+    resolved} rows for either tickets or conversations, bucketed by ISO
+    year-week / year-month of their creation timestamp."""
+    weekly = conn.execute(
+        f"""SELECT strftime('%Y-W%W', {date_col}) AS bucket,
+                   COUNT(*) AS raised,
+                   SUM(CASE WHEN {resolved_col} IS NOT NULL THEN 1 ELSE 0 END) AS resolved
+            FROM {table} GROUP BY bucket ORDER BY bucket DESC LIMIT 8"""
+    ).fetchall()
+    monthly = conn.execute(
+        f"""SELECT strftime('%Y-%m', {date_col}) AS bucket,
+                   COUNT(*) AS raised,
+                   SUM(CASE WHEN {resolved_col} IS NOT NULL THEN 1 ELSE 0 END) AS resolved
+            FROM {table} GROUP BY bucket ORDER BY bucket DESC LIMIT 6"""
+    ).fetchall()
+    return {
+        'weekly': [dict(r) for r in reversed(weekly)],
+        'monthly': [dict(r) for r in reversed(monthly)],
+    }
+
+
 def get_analytics(date_from: str = None, date_to: str = None) -> dict:
     """Aggregate KPIs the admin dashboard's Analytics page reads —
-    conversation/turn counts, source breakdown, language breakdown, and
-    tool-call frequency/success rate (parsed out of each bot message's
-    stored tool_trace)."""
+    conversation/turn counts, source breakdown, language breakdown,
+    tool-call frequency/success rate, CSAT, bot-vs-human resolution, and
+    week/month trend charts for both conversations and tickets."""
     clause = "WHERE 1=1"
     params = []
     if date_from:
@@ -203,6 +425,27 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             f"SELECT tool_trace FROM messages {clause} AND role = 'bot' AND tool_trace IS NOT NULL", params
         ).fetchall()
 
+        resolved_by_rows = conn.execute(
+            """SELECT resolved_by, COUNT(*) as n FROM conversations
+               WHERE resolved_by IS NOT NULL GROUP BY resolved_by"""
+        ).fetchall()
+        resolved_by = {r['resolved_by']: r['n'] for r in resolved_by_rows}
+
+        rating_row = conn.execute(
+            "SELECT AVG(rating) as avg_rating, COUNT(rating) as n_rated FROM conversations WHERE rating IS NOT NULL"
+        ).fetchone()
+        total_convos_all_time = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+
+        category_rows = conn.execute(
+            "SELECT category, COUNT(*) as n FROM tickets GROUP BY category ORDER BY n DESC LIMIT 8"
+        ).fetchall()
+
+        conversation_trend = _week_month_trend(conn, 'conversations', 'first_seen_at', 'resolved_at')
+        ticket_trend = _week_month_trend(conn, 'tickets', 'created_at', 'resolved_at')
+
+        open_tickets = conn.execute("SELECT COUNT(*) FROM tickets WHERE status NOT IN ('Resolved', 'Closed')").fetchone()[0]
+        total_tickets_all_time = conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
+
     tool_stats = {}
     for row in trace_rows:
         try:
@@ -218,6 +461,8 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             if call.get('ok'):
                 stat['ok'] += 1
 
+    pct_rated = round(100 * rating_row['n_rated'] / total_convos_all_time, 1) if total_convos_all_time else 0.0
+
     return {
         'total_conversations': total_conversations,
         'total_turns': total_turns,
@@ -228,4 +473,14 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             [{'tool': name, **stat} for name, stat in tool_stats.items()],
             key=lambda x: x['calls'], reverse=True,
         ),
+        'resolved_by_bot': resolved_by.get('bot', 0),
+        'resolved_by_escalation': resolved_by.get('escalated', 0),
+        'avg_rating': round(rating_row['avg_rating'], 2) if rating_row['avg_rating'] is not None else None,
+        'rated_count': rating_row['n_rated'],
+        'pct_rated': pct_rated,
+        'ticket_categories': [{'category': r['category'], 'count': r['n']} for r in category_rows],
+        'conversation_trend': conversation_trend,
+        'ticket_trend': ticket_trend,
+        'open_tickets': open_tickets,
+        'total_tickets': total_tickets_all_time,
     }

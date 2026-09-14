@@ -315,6 +315,7 @@ def ask():
 
     ctx = agent_context.resolve_session(payload, session_id, lang, history)
     ctx.last_attachment_url = find_last_attachment_url(question, history)
+    dashboard_db.ensure_conversation(session_id, ctx.user_id)
 
     if is_prediction_intent(question, lang):
         # Never let a prediction/fortune question reach the model at all —
@@ -368,6 +369,17 @@ def ask():
         'action': ctx.ui_action,
         'show_feedback': ctx.show_feedback,
     })
+
+
+@app.route('/feedback', methods=['POST'])
+def feedback():
+    payload = request.get_json(silent=True) or {}
+    session_id = str(payload.get('session_id') or '').strip()
+    rating = payload.get('rating')
+    if not session_id or not isinstance(rating, int) or not (1 <= rating <= 5):
+        return jsonify({'ok': False, 'error': 'session_id and an integer rating 1-5 are required'}), 400
+    ok = dashboard_db.record_rating(session_id, rating)
+    return jsonify({'ok': ok})
 
 
 if __name__ == '__main__':

@@ -11,10 +11,15 @@ RECHARGE_PACKAGES = [
     {"coins": 500, "price": "₹500"},
 ]
 
+# Real supported payment methods — given back to the model so it can
+# answer "can I pay with X" factually instead of guessing.
+SUPPORTED_PAYMENT_METHODS = ["UPI", "Cards", "Net Banking", "Wallets", "Amazon Pay"]
+
 
 def trigger(kind: str) -> dict:
     return {
         "type": "payment_bottomsheet",
         "kind": kind,  # 'low_balance' | 'recharge'
         "packages": RECHARGE_PACKAGES,
+        "payment_methods": SUPPORTED_PAYMENT_METHODS,
     }

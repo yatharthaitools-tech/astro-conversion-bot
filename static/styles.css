@@ -237,6 +237,51 @@ button, input { font: inherit; }
   display: block;
 }
 
+/* --- End-of-conversation feedback prompt — a resolved issue shouldn't
+   leave the chat open indefinitely, so this appears right after and
+   closes the widget once rated or skipped. */
+.feedback-card {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+}
+.feedback-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.feedback-stars {
+  display: flex;
+  gap: 6px;
+}
+.feedback-star {
+  border: none;
+  background: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: rgba(42, 28, 20, 0.25);
+  cursor: pointer;
+  padding: 2px;
+  transition: color 0.15s, transform 0.15s;
+}
+.feedback-star:hover {
+  color: var(--sun-dark);
+  transform: scale(1.15);
+}
+.feedback-skip {
+  border: none;
+  background: none;
+  color: rgba(42, 28, 20, 0.45);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.feedback-skip:hover { color: var(--ink); }
+
 @media (max-width: 480px) {
   html, body { display: block; }
   .chat-modal {

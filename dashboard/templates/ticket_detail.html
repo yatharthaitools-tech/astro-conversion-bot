@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Ticket — AstroLokal Admin{% endblock %}
+{% block content %}
+<a href="{{ url_for('dashboard.tickets') }}" class="back-link">&larr; Back to tickets</a>
+
+{% if not ticket %}
+  <h1>Not found</h1>
+  <p>No ticket #{{ ticket_id }}.</p>
+{% else %}
+  <h1>Ticket {{ ticket.ticket_ref }} <span class="status-pill status-{{ ticket.status|lower|replace(' ', '-') }}">{{ ticket.status }}</span></h1>
+  <p class="ticket-subline">{{ ticket.category }}{% if ticket.sub_category %} &middot; {{ ticket.sub_category }}{% endif %}</p>
+
+  <div class="ticket-layout">
+    <div class="ticket-main">
+      <div class="panel">
+        <h2>Description</h2>
+        <p>{{ ticket.description }}</p>
+        {% if ticket.evidence_url %}
+          <a href="{{ ticket.evidence_url }}" target="_blank" class="evidence-link">View attached evidence &rarr;</a>
+        {% endif %}
+      </div>
+
+      <div class="panel">
+        <h2>History</h2>
+        <div class="ticket-history">
+          {% for h in ticket.history %}
+            <div class="history-row">
+              <span class="status-pill status-{{ h.status|lower|replace(' ', '-') }}">{{ h.status }}</span>
+              <span class="history-note">{{ h.note or '' }}</span>
+              <span class="history-time">{{ h.changed_at[:16].replace('T', ' ') }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="ticket-side">
+      <div class="panel">
+        <h2>Details</h2>
+        <div class="side-field"><span class="label">User</span><span class="mono">{{ ticket.user_id }}</span></div>
+        <div class="side-field"><span class="label">LTV tier</span>{{ ticket.ltv_tier or '—' }}</div>
+        <div class="side-field"><span class="label">Created</span>{{ ticket.created_at[:19].replace('T', ' ') }}</div>
+        {% if ticket.resolved_at %}
+        <div class="side-field"><span class="label">Resolved</span>{{ ticket.resolved_at[:19].replace('T', ' ') }}</div>
+        {% endif %}
+        {% if ticket.session_id %}
+        <div class="side-field">
+          <span class="label">Conversation</span>
+          <a href="{{ url_for('dashboard.conversation_detail', session_id=ticket.session_id) }}">View chat &rarr;</a>
+        </div>
+        {% endif %}
+      </div>
+
+      <form method="post" class="panel">
+        <h2>Update status</h2>
+        <select name="status">
+          {% for s in statuses %}
+            <option value="{{ s }}" {{ 'selected' if s == ticket.status }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <textarea name="note" placeholder="Add a note (optional)" rows="3"></textarea>
+        <button type="submit" class="ticket-update-btn">Update</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

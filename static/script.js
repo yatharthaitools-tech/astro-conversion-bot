@@ -97,6 +97,10 @@ async function sendToBot(text) {
       // Otherwise: a card was just shown last turn — the reply text still
       // carries the offer, but we don't repeat the same card back-to-back.
     }
+
+    if (data.show_feedback) {
+      showFeedbackPrompt(data.session_id);
+    }
   } catch (error) {
     await minDelay;
     typingEl.remove();
@@ -149,21 +153,92 @@ async function handlePhotoUpload(file) {
 // astrologer matching isn't this bot's job, the native app's existing
 // recommendation system picks. 'specific' (visitor named someone) passes
 // the real astrologerId so native can go straight to that person.
+function sendToNativeHost(payload) {
+  if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
+    window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    return true;
+  }
+  // Only reached outside the app's WebView (e.g. testing in a plain
+  // browser) — makes the bridge call visible for local testing instead
+  // of silently doing nothing.
+  appendMessage('bot', `[dev fallback — no host app detected] Would send: ${JSON.stringify(payload)}`);
+  return false;
+}
+
 function triggerNativeConnect(mode, astrologer, isGeneric) {
-  const payload = {
+  sendToNativeHost({
     type: 'CONNECT_ASTROLOGER',
     mode, // 'chat' | 'call'
     matchType: isGeneric ? 'best_match' : 'specific',
     astrologerId: isGeneric ? null : astrologer.id,
-  };
+  });
+}
 
-  if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
-    window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-  } else {
-    // Only reached outside the app's WebView (e.g. testing in a plain
-    // browser) — makes the bridge call visible for local testing instead
-    // of silently doing nothing.
-    appendMessage('bot', `[dev fallback — no host app detected] Would send: ${JSON.stringify(payload)}`);
+// A resolved issue shouldn't leave the chat sitting open indefinitely —
+// ask for a quick rating, then actually end the session: tell the native
+// host to dismiss the WebView, and lock the widget itself either way so
+// there's a real endpoint instead of an idle chat waiting forever.
+function showFeedbackPrompt(sessionId) {
+  const card = document.createElement('div');
+  card.className = 'message bot feedback-card';
+
+  const label = document.createElement('div');
+  label.className = 'feedback-label';
+  label.textContent = 'How was this?';
+  card.appendChild(label);
+
+  const stars = document.createElement('div');
+  stars.className = 'feedback-stars';
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'feedback-star';
+    star.textContent = '★';
+    star.dataset.value = i;
+    star.addEventListener('click', () => submitFeedback(sessionId, i, card));
+    stars.appendChild(star);
+  }
+  card.appendChild(stars);
+
+  const skip = document.createElement('button');
+  skip.type = 'button';
+  skip.className = 'feedback-skip';
+  skip.textContent = 'Skip';
+  skip.addEventListener('click', () => {
+    card.remove();
+    closeChat();
+  });
+  card.appendChild(skip);
+
+  chatBody.appendChild(card);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+async function submitFeedback(sessionId, rating, card) {
+  card.remove();
+  appendMessage('bot', 'Thanks for the rating!');
+  try {
+    await fetch('/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, rating }),
+    });
+  } catch (error) {
+    // Best-effort — a failed rating POST shouldn't block closing the chat.
+  }
+  closeChat();
+}
+
+function closeChat() {
+  sendToNativeHost({ type: 'CLOSE_CHAT' });
+  // No host app (plain-browser testing) — there's nothing to dismiss, so
+  // lock the widget itself into an ended state instead of leaving it open.
+  if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
+    chatInput.disabled = true;
+    chatInput.placeholder = 'Chat ended';
+    sendButton.disabled = true;
+    photoBtn.disabled = true;
+    if (quickReplies) quickReplies.hidden = true;
   }
 }
 
@@ -219,7 +294,7 @@ function renderConnectCard(action) {
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
-sendButton.addEventListener('click', sendMessage);
+sendButton.addEventListener('click', () => sendMessage());
 chatInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') sendMessage();
 });

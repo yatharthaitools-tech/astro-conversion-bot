@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Tickets — AstroLokal Admin{% endblock %}
+{% block content %}
+<h1>Tickets</h1>
+
+<form method="get" class="filter-bar">
+  <select name="status">
+    <option value="" {{ 'selected' if not filters.status }}>All statuses</option>
+    {% for s in statuses %}
+      <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="category">
+    <option value="" {{ 'selected' if not filters.category }}>All categories</option>
+    {% for c in ['payment','refund','account','astrologer_queue','billing_dispute','quality_complaint','feature_request','technical','language_change','report','escalation'] %}
+      <option value="{{ c }}" {{ 'selected' if filters.category == c }}>{{ c }}</option>
+    {% endfor %}
+  </select>
+  <input type="date" name="from" value="{{ filters.from }}" />
+  <input type="date" name="to" value="{{ filters.to }}" />
+  <button type="submit">Filter</button>
+  <a href="{{ url_for('dashboard.tickets') }}" class="filter-clear">Clear</a>
+</form>
+
+<div class="table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Ticket</th>
+        <th>User</th>
+        <th>Category</th>
+        <th>Issue</th>
+        <th>Status</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tickets %}
+      <tr onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">
+        <td class="mono">{{ t.ticket_ref }}</td>
+        <td class="mono">{{ t.user_id[:14] }}…</td>
+        <td>{{ t.category }}<div class="table-subtext">{{ t.sub_category or '' }}</div></td>
+        <td class="truncate">{{ t.description }}</td>
+        <td><span class="status-pill status-{{ t.status|lower|replace(' ', '-') }}">{{ t.status }}</span></td>
+        <td>{{ t.created_at[:16].replace('T', ' ') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty-state">No tickets yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% for p in range(1, total_pages + 1) %}
+    <a href="?page={{ p }}&status={{ filters.status }}&category={{ filters.category }}&from={{ filters.from }}&to={{ filters.to }}"
+       class="{{ 'active' if p == page }}">{{ p }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

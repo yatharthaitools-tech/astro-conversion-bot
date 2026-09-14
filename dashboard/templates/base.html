@@ -13,12 +13,21 @@
       <nav class="admin-nav">
         <div class="admin-brand">AstroLokal <span>Admin</span></div>
         <a href="{{ url_for('dashboard.conversations') }}" class="{{ 'active' if active == 'conversations' }}">Conversations</a>
+        <a href="{{ url_for('dashboard.tickets') }}" class="{{ 'active' if active == 'tickets' }}">Tickets</a>
         <a href="{{ url_for('dashboard.analytics') }}" class="{{ 'active' if active == 'analytics' }}">Analytics</a>
         <form method="post" action="{{ url_for('dashboard.logout') }}" class="admin-logout-form">
           <button type="submit" class="admin-logout-btn">Log out</button>
         </form>
       </nav>
       <main class="admin-main">
+        {% if system_health and not system_health.live %}
+          <div class="health-banner">
+            <strong>Bot may not be fully live:</strong>
+            <ul>
+              {% for issue in system_health.issues %}<li>{{ issue }}</li>{% endfor %}
+            </ul>
+          </div>
+        {% endif %}
         {% block content %}{% endblock %}
       </main>
     </div>

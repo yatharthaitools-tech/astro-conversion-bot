@@ -71,6 +71,18 @@ def is_configured() -> bool:
     return _credentials is not None
 
 
+def configuration_error() -> str:
+    """Specific reason Gemini/Vertex isn't configured, or None if it is —
+    for the admin dashboard's live-status banner (never just a silent
+    guess at why replies are rule-based)."""
+    _load_credentials()
+    if _credentials is not None:
+        return None
+    if not os.environ.get('GEMINI_VERTEX_CREDENTIALS_JSON'):
+        return "GEMINI_VERTEX_CREDENTIALS_JSON is not set"
+    return "GEMINI_VERTEX_CREDENTIALS_JSON is set but failed to parse — check the service-account JSON"
+
+
 def _get_access_token() -> str:
     if not _credentials.valid:
         _credentials.refresh(GoogleAuthRequest())

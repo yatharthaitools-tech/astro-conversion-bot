@@ -86,9 +86,10 @@ CREDIT_COINS = {
     "name": "credit_coins",
     "description": (
         "Requests a coin credit (refund or goodwill) for a specific "
-        "booking. The amount is ALWAYS computed server-side from the "
-        "visitor's real LTV tier and the booking's real deduction — there "
-        "is no amount field, you cannot set or influence the number. "
+        "booking, or a small no-strings retention gesture with no booking "
+        "in dispute at all. The amount is ALWAYS computed server-side from "
+        "the visitor's real LTV tier and the booking's real deduction — "
+        "there is no amount field, you cannot set or influence the number. "
         "New/Unpaid visitors (₹0 lifetime spend) are never eligible — the "
         "call will fail cleanly for them, so still explain/offer to "
         "reconnect/escalate instead of promising a credit first. Also "
@@ -99,23 +100,31 @@ CREDIT_COINS = {
         "that's create_support_ticket's job (fetch get_booking_details for "
         "evidence, then escalate); you don't get to auto-compensate a "
         "timing complaint on your own judgment. This is for a session that "
-        "happened but was genuinely poor/short, or a factual dispute."
+        "happened but was genuinely poor/short, a factual dispute, OR a "
+        "visitor saying the app/service is too expensive and considering "
+        "leaving — omit booking_id for that retention case (it uses their "
+        "most recent booking automatically). NEVER call this as a response "
+        "to a legal threat or fraud accusation — that's create_support_ticket "
+        "only, offering coins there reads as admitting fault."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "booking_id": {"type": "string", "description": "The booking this credit relates to."},
+            "booking_id": {
+                "type": "string",
+                "description": "The booking this credit relates to. Omit for a general retention gesture with no specific booking in dispute — the visitor's most recent booking is used automatically.",
+            },
             "reason": {
                 "type": "string",
                 "enum": ["refund", "goodwill"],
-                "description": "'refund' for a factual dispute, 'goodwill' for a service-quality complaint.",
+                "description": "'refund' for a factual dispute, 'goodwill' for a service-quality complaint or retention gesture.",
             },
             "category": {
                 "type": "string",
-                "description": "Short concern category, e.g. 'astrologer_no_response', 'call_quality', 'tech_issue'.",
+                "description": "Short concern category, e.g. 'astrologer_no_response', 'call_quality', 'tech_issue', 'retention_pricing'.",
             },
         },
-        "required": ["booking_id", "reason", "category"],
+        "required": ["reason", "category"],
     },
 }
 
@@ -226,9 +235,12 @@ TRIGGER_PAYMENT_BOTTOMSHEET = {
     "name": "trigger_payment_bottomsheet",
     "description": (
         "Surfaces the existing low-balance or recharge bottom sheet in the "
-        "app UI. You never set or suggest a specific amount — the visitor "
-        "picks from the app's own fixed packages once the sheet opens. "
-        "Use 'low_balance' when a booking/call is blocked on insufficient "
+        "app UI, and its result tells you the real supported payment "
+        "methods (UPI, cards, net banking, wallets, etc.) — quote those "
+        "back rather than guessing a method the visitor asks about. You "
+        "never set or suggest a specific amount — the visitor picks from "
+        "the app's own fixed packages once the sheet opens. Use "
+        "'low_balance' when a booking/call is blocked on insufficient "
         "coins, 'recharge' for a general top-up request."
     ),
     "input_schema": {
@@ -261,7 +273,12 @@ CREATE_SUPPORT_TICKET = {
         "— you never resolve these yourself, only route them. Use "
         "'language_change' for a consultation-language-change request — "
         "never claim the language changed until this ticket's own process "
-        "confirms it."
+        "confirms it. Use 'escalation' for a visitor asking for a manager/"
+        "senior person, or saying this is their second time writing with "
+        "nothing resolved. For a legal threat or fraud accusation, use "
+        "'escalation' or 'refund' immediately — do NOT call credit_coins "
+        "as a response to a threat, that reads as admitting fault; this "
+        "ticket is the only response."
     ),
     "input_schema": {
         "type": "object",
@@ -271,7 +288,7 @@ CREATE_SUPPORT_TICKET = {
                 "enum": [
                     "payment", "refund", "account", "astrologer_queue",
                     "billing_dispute", "quality_complaint", "feature_request",
-                    "technical", "language_change", "report",
+                    "technical", "language_change", "report", "escalation",
                 ],
             },
             "sub_category": {"type": "string"},
@@ -294,7 +311,11 @@ LOG_FEATURE_REQUEST = {
         "Logs a feature request or an ask for something not yet built "
         "(chat history export, account deletion via chat, etc.) for the "
         "product team. These are honest product gaps — acknowledge "
-        "warmly, log it, and NEVER escalate to a support ticket for this."
+        "warmly, log it, and NEVER escalate to a support ticket for this. "
+        "Also use 'astrologer_signup_lead' when someone wants to JOIN the "
+        "platform as an astrologer — this logs their interest for the "
+        "onboarding team to reach out directly; never redirect them off-app "
+        "or promise a specific timeline."
     ),
     "input_schema": {
         "type": "object",
@@ -302,7 +323,10 @@ LOG_FEATURE_REQUEST = {
             "text": {"type": "string"},
             "kind": {
                 "type": "string",
-                "enum": ["feature_request", "delete_chat_history", "delete_account_info"],
+                "enum": [
+                    "feature_request", "delete_chat_history", "delete_account_info",
+                    "astrologer_signup_lead",
+                ],
             },
         },
         "required": ["text", "kind"],

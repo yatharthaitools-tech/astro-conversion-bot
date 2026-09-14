@@ -44,11 +44,11 @@ def _handle_get_ltv_tier(safe_input, ctx):
 
 
 def _handle_credit_coins(safe_input, ctx):
-    booking_id = safe_input.get("booking_id")
+    booking_id = safe_input.get("booking_id")  # optional — None = most recent booking (retention case)
     reason = safe_input.get("reason")
     category = safe_input.get("category", "unspecified")
-    if not booking_id or not reason:
-        return {"error": "booking_id and reason are required"}
+    if not reason:
+        return {"error": "reason is required"}
     return ltv_service.request_credit(ctx.user_id, booking_id, reason, category)
 
 
@@ -89,7 +89,7 @@ def _handle_trigger_payment_bottomsheet(safe_input, ctx):
     kind = safe_input.get("kind", "recharge")
     action = payment_bottomsheet_client.trigger(kind)
     ctx.ui_action = action
-    return {"ok": True, "kind": kind}
+    return {"ok": True, "kind": kind, "payment_methods": action["payment_methods"]}
 
 
 def _handle_create_support_ticket(safe_input, ctx):
@@ -100,7 +100,8 @@ def _handle_create_support_ticket(safe_input, ctx):
         return {"error": "category, sub_category, and description are required"}
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
     ticket = ticket_service.create_ticket(
-        ctx.user_id, category, sub_category, description, evidence_url
+        ctx.user_id, category, sub_category, description, evidence_url,
+        session_id=ctx.session_id,
     )
     return {"ok": True, "ticket_id": ticket["ticket_id"], "status": ticket["status"]}
 
