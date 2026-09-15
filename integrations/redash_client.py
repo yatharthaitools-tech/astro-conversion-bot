@@ -10,8 +10,23 @@ AstroHelp's integrations/.
 
 Deterministic per-user (hash of user_id), not random — same user always
 gets the same mock data, stable across a demo/test session.
+
+get_astrologer_availability() is the one exception — a REAL Redash query
+(id 20369 by default), not mocked. It needs REDASH_AVAILABILITY_API_KEY
+set; without it, callers get None back and should fall back to whatever
+mocked availability they already have.
 """
 import hashlib
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+_REDASH_BASE_URL = "https://analytics.getlokalapp.com/api/queries"
+_IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def _seed(user_id: str, salt: str) -> int:
@@ -150,3 +165,74 @@ def get_refund_goodwill_history(user_id: str, booking_id: str) -> list:
         "amount": 50,
         "credited_at": "yesterday",
     }]
+
+
+def _parse_utc_timestamp(value: str) -> datetime:
+    """Redash returns datetime columns as ISO 8601 in the JSON API (the
+    'DD/MM/YY HH:MM' you see in the query results UI is that same instant,
+    just reformatted for display) — but tolerate that display format too
+    in case a caller ever passes it straight through."""
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime.strptime(value, "%d/%m/%y %H:%M").replace(tzinfo=timezone.utc)
+
+
+def _format_ist(dt_utc: datetime) -> str:
+    """'6:00 PM today' / '6:00 PM tomorrow' / '6:00 PM on 17 Sep' — same
+    phrasing the mocked schedule data in recommend_flow_client uses, so
+    swapping mock for real doesn't change how the bot talks."""
+    now_ist = datetime.now(timezone.utc).astimezone(_IST)
+    dt_ist = dt_utc.astimezone(_IST)
+    time_str = dt_ist.strftime("%-I:%M %p")
+    day_delta = (dt_ist.date() - now_ist.date()).days
+    if day_delta == 0:
+        return f"{time_str} today"
+    if day_delta == 1:
+        return f"{time_str} tomorrow"
+    return f"{time_str} on {dt_ist.strftime('%-d %b')}"
+
+
+def get_astrologer_availability(expert_id) -> dict:
+    """REAL query (Redash query id REDASH_AVAILABILITY_QUERY_ID, default
+    20369) — is_online_now + an ML-predicted next-available time, keyed by
+    expert_id. Returns None when REDASH_AVAILABILITY_API_KEY isn't set, the
+    query call fails, or expert_id isn't in the result set, so callers can
+    fall back to their own mocked availability instead of erroring out.
+
+    Known columns as of query 20369: expert_id, is_online_now,
+    predicted_peak_hour, historical_avg_hours_online_a..., and
+    predicted_next_available_utc (UTC — converted to IST here since that's
+    what the bot's copy uses everywhere else).
+    """
+    api_key = os.environ.get("REDASH_AVAILABILITY_API_KEY")
+    if not api_key:
+        return None
+
+    query_id = os.environ.get("REDASH_AVAILABILITY_QUERY_ID", "20369")
+    try:
+        response = requests.get(
+            f"{_REDASH_BASE_URL}/{query_id}/results.json",
+            params={"api_key": api_key},
+            timeout=10,
+        )
+        response.raise_for_status()
+        rows = response.json()["query_result"]["data"]["rows"]
+    except (requests.RequestException, KeyError, ValueError) as exc:
+        logger.warning("Redash availability query %s failed: %s", query_id, exc)
+        return None
+
+    for row in rows:
+        if str(row.get("expert_id")) != str(expert_id):
+            continue
+        is_online_now = bool(row.get("is_online_now"))
+        next_available_at = None
+        raw_next_available = row.get("predicted_next_available_utc")
+        if not is_online_now and raw_next_available:
+            try:
+                next_available_at = _format_ist(_parse_utc_timestamp(raw_next_available))
+            except ValueError as exc:
+                logger.warning("Unparseable predicted_next_available_utc %r: %s", raw_next_available, exc)
+        return {"is_online_now": is_online_now, "next_available_at": next_available_at}
+
+    return None

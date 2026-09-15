@@ -22,11 +22,14 @@ the bot's own chat text, just not this component.
 """
 import re
 
+from integrations import redash_client
+
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
 
 ASTROLOGERS = [
     {
         "id": "mahalakshmi",
+        "expert_id": None,  # real Redash expert_id, once known — see get_astrologer_availability() below
         "name": "Mahalakshmi",
         "specialty": "Face reading, Palm reading, Numerology",
         "languages": "Hindi, English, Telugu",
@@ -40,6 +43,7 @@ ASTROLOGERS = [
     },
     {
         "id": "samrat",
+        "expert_id": None,
         "name": "Samrat",
         "specialty": "Face reading, Tarot, Vedic",
         "languages": "Hindi, English, Telugu, Marathi",
@@ -53,6 +57,7 @@ ASTROLOGERS = [
     },
     {
         "id": "nidhi",
+        "expert_id": None,
         "name": "Nidhi",
         "specialty": "Face reading, Palm reading, Numerology",
         "languages": "Hindi, English, Telugu",
@@ -72,10 +77,28 @@ CONNECT_LABELS = {
     "ml": "ഇപ്പോൾ ബന്ധിപ്പിക്കుக",
 }
 
+def _with_live_availability(astrologer: dict) -> dict:
+    """Overlays real Redash availability (get_astrologer_availability) when
+    this astrologer's expert_id is known and the query succeeds; otherwise
+    returns the mocked entry unchanged. Real data only knows online/offline
+    + a predicted ETA, not this mock's "busy, wait ~N min" nuance — once
+    expert_id is set, that field's mocked "Busy..." text stops applying."""
+    expert_id = astrologer.get("expert_id")
+    if not expert_id:
+        return astrologer
+    live = redash_client.get_astrologer_availability(expert_id)
+    if live is None:
+        return astrologer
+    merged = dict(astrologer)
+    merged["availability"] = "Available now" if live["is_online_now"] else "Offline right now"
+    merged["next_available_at"] = live["next_available_at"]
+    return merged
+
+
 def get_astrologer(astrologer_id: str):
     for a in ASTROLOGERS:
         if a["id"] == astrologer_id:
-            return a
+            return _with_live_availability(a)
     return None
 
 
@@ -111,9 +134,10 @@ def pick_best_match():
     """Placeholder for the real matching system — first genuinely
     available astrologer (not busy, not offline)."""
     for a in ASTROLOGERS:
-        if a["next_available_at"] is None and not a["availability"].lower().startswith("busy"):
-            return a
-    return ASTROLOGERS[0]
+        live = _with_live_availability(a)
+        if live["next_available_at"] is None and not live["availability"].lower().startswith("busy"):
+            return live
+    return _with_live_availability(ASTROLOGERS[0])
 
 
 def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:
