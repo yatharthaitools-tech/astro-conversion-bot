@@ -185,7 +185,13 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
         "answer the prediction itself, always call this instead. Never "
         "share an astrologer's phone number or any private contact detail "
         "under any circumstances — this tool (or notify_me_subscribe, if "
-        "they're offline) is always the substitute for direct contact."
+        "they're offline) is always the substitute for direct contact. "
+        "The result's next_available_at is a real scheduled return time — "
+        "when it's set, say that time directly ('back at 6 PM') rather "
+        "than a vague 'I'll let you know when they're back'; you can "
+        "still offer notify_me_subscribe on top of stating the time. When "
+        "next_available_at is null, there's no known return time at all — "
+        "notify_me_subscribe's push-notification framing is what you have."
     ),
     "input_schema": {
         "type": "object",
@@ -224,10 +230,14 @@ NOTIFY_ME_SUBSCRIBE = {
         "search_astrologers already resolved to an id — use this as the "
         "conversion-recovery path when that person isn't available right "
         "now, offered alongside trigger_recommend_astrologer for a live "
-        "alternate, don't just say 'keep checking the app'. Also the "
-        "correct response if the visitor asks for their phone number — "
-        "never share a phone number or private contact detail, offer this "
-        "instead."
+        "alternate, don't just say 'keep checking the app'. The result's "
+        "next_available_at is a real scheduled return time when known — "
+        "say it directly ('back at 6 PM, I'll ping you then too') rather "
+        "than a vague 'I'll notify you'; when it's null there's genuinely "
+        "no known return time, so the notification framing alone is what "
+        "you have. Also the correct response if the visitor asks for "
+        "their phone number — never share a phone number or private "
+        "contact detail, offer this instead."
     ),
     "input_schema": {
         "type": "object",

@@ -114,11 +114,14 @@ def _handle_trigger_recommend_astrologer(safe_input, ctx):
     # Real availability, not a guess — this is what tells the model whether
     # a named astrologer is actually busy/offline before it decides whether
     # notify_me_subscribe even applies. Never assume someone's unavailable
-    # without this.
+    # without this. next_available_at is a real scheduled return time when
+    # known (distinct from a short "busy, back in ~N min" wait) — state it
+    # directly rather than only offering to notify when it's set.
     return {
         "ok": True,
         "shown": astrologer["name"] if action["display_mode"] == "specific" else "best_match",
         "availability": astrologer["availability"],
+        "next_available_at": astrologer["next_available_at"],
     }
 
 
@@ -130,7 +133,11 @@ def _handle_notify_me_subscribe(safe_input, ctx):
     if not astrologer:
         return {"error": "unknown astrologer_id"}
     # MOCKED — real version would write a notify-me subscription row.
-    return {"ok": True, "subscribed_to": astrologer["name"]}
+    return {
+        "ok": True,
+        "subscribed_to": astrologer["name"],
+        "next_available_at": astrologer["next_available_at"],
+    }
 
 
 def _handle_trigger_payment_bottomsheet(safe_input, ctx):

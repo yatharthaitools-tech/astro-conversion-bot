@@ -36,6 +36,7 @@ ASTROLOGERS = [
         "price": "10/min",
         "price_original": "56/min",
         "availability": "Available now",
+        "next_available_at": None,
     },
     {
         "id": "samrat",
@@ -48,6 +49,7 @@ ASTROLOGERS = [
         "price": "12/min",
         "price_original": None,
         "availability": "Busy, wait ~15 min",
+        "next_available_at": None,  # short wait — the availability text IS the ETA
     },
     {
         "id": "nidhi",
@@ -59,7 +61,8 @@ ASTROLOGERS = [
         "rating": 4.4,
         "price": "15/min",
         "price_original": "25/min",
-        "availability": "Available now",
+        "availability": "Offline right now",
+        "next_available_at": "6:00 PM today",  # a real scheduled-return case, distinct from "busy, back in ~N min"
     },
 ]
 
@@ -105,9 +108,10 @@ def search(query: str) -> list:
 
 
 def pick_best_match():
-    """Placeholder for the real matching system — first available astrologer."""
+    """Placeholder for the real matching system — first genuinely
+    available astrologer (not busy, not offline)."""
     for a in ASTROLOGERS:
-        if not a["availability"].lower().startswith("busy"):
+        if a["next_available_at"] is None and not a["availability"].lower().startswith("busy"):
             return a
     return ASTROLOGERS[0]
 
