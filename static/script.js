@@ -178,26 +178,36 @@ function triggerNativeConnect(mode, astrologer, isGeneric) {
 // ask for a quick rating, then actually end the session: tell the native
 // host to dismiss the WebView, and lock the widget itself either way so
 // there's a real endpoint instead of an idle chat waiting forever.
+//
+// Rendered as its own card (not a plain message bubble) so it reads as a
+// distinct moment rather than getting lost in the scroll — stars fill up
+// to whichever one you're hovering, and a click confirms in place instead
+// of yanking the card out and popping a separate "thanks" bubble.
 function showFeedbackPrompt(sessionId) {
   const card = document.createElement('div');
   card.className = 'message bot feedback-card';
 
   const label = document.createElement('div');
   label.className = 'feedback-label';
-  label.textContent = 'How was this?';
+  label.textContent = 'How was this conversation?';
   card.appendChild(label);
 
   const stars = document.createElement('div');
   stars.className = 'feedback-stars';
+  const starEls = [];
   for (let i = 1; i <= 5; i++) {
     const star = document.createElement('button');
     star.type = 'button';
     star.className = 'feedback-star';
     star.textContent = '★';
     star.dataset.value = i;
-    star.addEventListener('click', () => submitFeedback(sessionId, i, card));
+    star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+    star.addEventListener('mouseenter', () => fillStars(starEls, i));
+    star.addEventListener('click', () => submitFeedback(sessionId, i, card, label, starEls, skip));
     stars.appendChild(star);
+    starEls.push(star);
   }
+  stars.addEventListener('mouseleave', () => fillStars(starEls, 0));
   card.appendChild(stars);
 
   const skip = document.createElement('button');
@@ -214,9 +224,17 @@ function showFeedbackPrompt(sessionId) {
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
-async function submitFeedback(sessionId, rating, card) {
-  card.remove();
-  appendMessage('bot', 'Thanks for the rating!');
+function fillStars(starEls, upTo) {
+  starEls.forEach((star, idx) => star.classList.toggle('filled', idx < upTo));
+}
+
+async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
+  fillStars(starEls, rating);
+  starEls.forEach((star) => { star.disabled = true; });
+  skip.remove();
+  label.textContent = 'Thanks for the feedback!';
+  card.classList.add('feedback-done');
+
   try {
     await fetch('/feedback', {
       method: 'POST',
@@ -226,7 +244,7 @@ async function submitFeedback(sessionId, rating, card) {
   } catch (error) {
     // Best-effort — a failed rating POST shouldn't block closing the chat.
   }
-  closeChat();
+  setTimeout(closeChat, 700);
 }
 
 function closeChat() {
