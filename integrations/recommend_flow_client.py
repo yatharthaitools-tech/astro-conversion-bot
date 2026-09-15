@@ -8,23 +8,19 @@ Astrologer roster shape/data matches the real AstroLokal app (see the
 Figma reference): name, specialty tags, languages, per-minute coin
 pricing, live availability.
 
-The rendered card is ALWAYS the same fixed design asset
-(static/avatars/connect-card.png) — a single supplied image, shown
-as-is with no generated text overlaid on it. It's a showcase for the
-roster as a category, not a claim that these are the specific people the
-visitor will be connected to. Even when the visitor named someone
-specific and search_astrologers resolved a real record (astrologer_id
-set below), that record is only used internally (real availability for
-notify_me_subscribe, and the id still reaches the native bridge so
-tapping Connect routes to the right person) — it never changes what the
-visitor sees on the card itself, which is why `concern` no longer
-affects the image (there's nothing left to template into a static
-picture) — it's still accepted and still shapes the bot's own chat text,
-just not this asset.
+The rendered card is a real UI component (script.js's renderConnectCard —
+markup + CSS, not an image), and it's ALWAYS the same fixed design — a
+showcase for the roster as a category, not a claim that these are the
+specific people the visitor will be connected to. Even when the visitor
+named someone specific and search_astrologers resolved a real record
+(astrologer_id set below), that record is only used internally (real
+availability for notify_me_subscribe, and the id still reaches the
+native bridge so tapping Connect routes to the right person) — it never
+changes what the visitor sees on the card itself, which is why `concern`
+no longer affects the card's copy — it's still accepted and still shapes
+the bot's own chat text, just not this component.
 """
 import re
-
-CARD_IMAGE = "/static/avatars/connect-card.png"
 
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
 
@@ -118,8 +114,9 @@ def pick_best_match():
 
 def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:
     """Builds the connect_popup UI action. The card the visitor sees is
-    always the same fixed design asset (CARD_IMAGE) — astrologer_id (when
-    the visitor named someone and search_astrologers resolved them) only
+    always the same fixed design (rendered client-side as a component,
+    not an image) — astrologer_id (when the visitor named someone and
+    search_astrologers resolved them) only
     affects internal fields: real availability, and the id passed to the
     native bridge so Connect still routes to that person. It's never
     shown on the card. `concern` is accepted for the agent's own chat
@@ -134,5 +131,4 @@ def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:
         "display_mode": "specific" if named else "general",
         "label": label,
         "astrologer": astrologer,
-        "card": {"image": CARD_IMAGE},
     }

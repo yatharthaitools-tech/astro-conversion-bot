@@ -241,8 +241,9 @@ function showInactivityNudge() {
     sendMessage("I'm done, please close this out");
   });
 
-  actions.appendChild(connectBtn);
+  // Close it out first, Connect me (the primary CTA) rightmost.
   actions.appendChild(closeBtn);
+  actions.appendChild(connectBtn);
   card.appendChild(actions);
 
   chatBody.appendChild(card);
@@ -337,52 +338,108 @@ function closeChat() {
 }
 
 // Stub for the app's real recommend-astrologer flow, which this repo has no
-// access to. The card is a single fixed design asset
-// (static/avatars/connect-card.png), shown completely unmodified — no
-// generated text, name or photo ever overlaid on it. Two invisible tap
-// targets sit over the Chat/Call areas already baked into that image so
-// the native bridge still fires; astrologer_id (when resolved) only
-// travels under the hood there, it never changes what's shown.
+// access to. The card is a real component (markup + CSS below), not a
+// baked image — no generated text, name or photo is templated into it
+// though; astrologer_id (when resolved) only travels under the hood to
+// the native bridge, it never changes what's shown on the card itself.
+
+// Icon glyphs for the stats row and buttons — inline SVG (not another
+// image asset) so they scale crisply and inherit currentColor.
+const CC_ICONS = {
+  medal: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 L7 21 L12 18 L17 21 L15.5 12.5"/></svg>',
+  people: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M15.5 14.3c2.9.3 5 2.3 5 5.2"/></svg>',
+  star: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87 1.18 6.87L12 18.27l-6.18 3.23L7 14.63l-5-4.87 6.91-1L12 2.5z"/></svg>',
+  chat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H8l-4 4V5z"/></svg>',
+  phone: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.5 2.3.8 3.6.9.6 0 1 .5 1 1V21c0 .6-.4 1-1 1C10.6 22 2 13.4 2 3c0-.6.4-1 1-1h3.9c.5 0 1 .4 1 1 .1 1.3.4 2.5.9 3.6.1.4.1.8-.2 1.1L6.6 10.8z"/></svg>',
+  lotus: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21c-4-1.5-6-5-6-8 2.5.5 4.5 2 6 4.5C13.5 14 15.5 12.5 18 12c0 3-2 6.5-6 9z"/><path d="M12 17c-1-3-1-6.5 0-10 1 3.5 1 7 0 10z"/><path d="M12 15c-2.5-2-4-4.5-4-7.5C10.5 8.5 12 10.5 12 13c0-2.5 1.5-4.5 4-5.5 0 3-1.5 5.5-4 7.5z"/></svg>',
+};
+
 function renderConnectCard(action) {
   const astrologer = action.astrologer;
   if (!astrologer) return;
   const isGeneric = action.display_mode !== 'specific';
-  const imageSrc = (action.card || {}).image;
-  if (!imageSrc) return;
 
   const card = document.createElement('div');
   card.className = 'message bot connect-card';
 
-  const frame = document.createElement('div');
-  frame.className = 'connect-card-frame';
+  const avatars = document.createElement('div');
+  avatars.className = 'cc-avatars';
+  const avatarSrcs = [
+    '/static/avatars/connect-avatar-2.png',
+    '/static/avatars/connect-avatar-1.png',
+    '/static/avatars/connect-avatar-3.png',
+  ];
+  avatarSrcs.forEach((src, i) => {
+    const img = document.createElement('img');
+    img.className = i === 1 ? 'cc-avatar cc-avatar-main' : 'cc-avatar';
+    img.src = src;
+    img.alt = '';
+    avatars.appendChild(img);
+  });
+  const lotus = document.createElement('div');
+  lotus.className = 'cc-avatar cc-lotus';
+  lotus.innerHTML = CC_ICONS.lotus;
+  avatars.appendChild(lotus);
+  card.appendChild(avatars);
 
-  const img = document.createElement('img');
-  img.className = 'connect-card-image';
-  img.src = imageSrc;
-  img.alt = 'Connect with a top astrologer';
-  frame.appendChild(img);
+  const badge = document.createElement('div');
+  badge.className = 'cc-badge';
+  badge.textContent = '✨ Top astrologers for you';
+  card.appendChild(badge);
 
-  const chatHit = document.createElement('button');
-  chatHit.type = 'button';
-  chatHit.className = 'connect-hitarea connect-hitarea-chat';
-  chatHit.setAttribute('aria-label', 'Chat');
+  const heading = document.createElement('h3');
+  heading.className = 'cc-heading';
+  heading.textContent = 'Get guidance from our best astrologers';
+  card.appendChild(heading);
 
-  const callHit = document.createElement('button');
-  callHit.type = 'button';
-  callHit.className = 'connect-hitarea connect-hitarea-call';
-  callHit.setAttribute('aria-label', 'Call now');
+  const sub = document.createElement('p');
+  sub.className = 'cc-sub';
+  sub.textContent = "We'll connect you with an astrologer who matches your concern.";
+  card.appendChild(sub);
 
-  [[chatHit, 'chat'], [callHit, 'call']].forEach(([btn, mode]) => {
+  const stats = document.createElement('div');
+  stats.className = 'cc-stats';
+  [
+    [CC_ICONS.medal, '10+ years', 'average experience'],
+    [CC_ICONS.people, '1,000+', 'users helped'],
+    [CC_ICONS.star, '4.8', 'average rating'],
+  ].forEach(([icon, value, label], i) => {
+    if (i > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'cc-divider';
+      stats.appendChild(divider);
+    }
+    const stat = document.createElement('div');
+    stat.className = 'cc-stat';
+    stat.innerHTML = `<span class="cc-stat-icon">${icon}</span><span class="cc-stat-text"><span class="cc-stat-value">${value}</span><span class="cc-stat-label">${label}</span></span>`;
+    stats.appendChild(stat);
+  });
+  card.appendChild(stats);
+
+  const actions = document.createElement('div');
+  actions.className = 'cc-actions';
+
+  const chatBtn = document.createElement('button');
+  chatBtn.type = 'button';
+  chatBtn.className = 'cc-btn cc-btn-chat';
+  chatBtn.innerHTML = `${CC_ICONS.chat}<span>Chat</span>`;
+
+  const callBtn = document.createElement('button');
+  callBtn.type = 'button';
+  callBtn.className = 'cc-btn cc-btn-call';
+  callBtn.innerHTML = `${CC_ICONS.phone}<span>Call now</span>`;
+
+  [[chatBtn, 'chat'], [callBtn, 'call']].forEach(([btn, mode]) => {
     btn.addEventListener('click', () => {
-      chatHit.disabled = true;
-      callHit.disabled = true;
+      chatBtn.disabled = true;
+      callBtn.disabled = true;
       triggerNativeConnect(mode, astrologer, isGeneric);
     });
   });
 
-  frame.appendChild(chatHit);
-  frame.appendChild(callHit);
-  card.appendChild(frame);
+  actions.appendChild(chatBtn);
+  actions.appendChild(callBtn);
+  card.appendChild(actions);
 
   chatBody.appendChild(card);
   chatBody.scrollTop = chatBody.scrollHeight;
