@@ -130,10 +130,22 @@ async function sendToBot(text) {
       // Otherwise: a card was just shown last turn — the reply text still
       // carries the offer, but we don't repeat the same card back-to-back.
     } else if (data.action && data.action.type === 'free_coins_bottomsheet') {
-      // Not rendered in-chat at all — this is the app's own existing
-      // bottomsheet UI, so just hand the payload straight to native in
-      // the exact shape its real free-coins API already returns.
+      // The app's own real bottomsheet is native-side — hand the payload
+      // straight to it in the exact shape its free-coins API returns.
+      // Also shown as its own small card right here in-chat (a credit
+      // is easy to miss as a single line of text), then straight into
+      // the connect card too — a credit alone is a dead end, this is
+      // the natural next step while the coins are top of mind.
       sendToNativeHost({ type: 'SHOW_FREE_COINS_BOTTOMSHEET', freeCoins: data.action.freeCoins });
+      showCoinsCreditedCard(data.action.freeCoins);
+      if (data.action.connect) {
+        renderConnectCard({
+          type: 'connect_popup',
+          display_mode: data.action.connect.display_mode,
+          astrologer: data.action.connect.astrologer,
+        });
+        turnsSinceLastCard = 0;
+      }
     }
 
     if (data.show_feedback) {
@@ -261,6 +273,22 @@ function showInactivityNudge() {
   actions.appendChild(closeBtn);
   actions.appendChild(connectBtn);
   card.appendChild(actions);
+
+  chatBody.appendChild(card);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+// A quick in-chat confirmation that coins actually landed — easy to
+// miss as just a line of reply text, so this gives it its own visual
+// moment alongside the native bottomsheet.
+function showCoinsCreditedCard(freeCoins) {
+  const card = document.createElement('div');
+  card.className = 'message bot coins-card';
+
+  const label = document.createElement('div');
+  label.className = 'coins-card-label';
+  label.textContent = `🎉 ${freeCoins.coins} free coins added!`;
+  card.appendChild(label);
 
   chatBody.appendChild(card);
   chatBody.scrollTop = chatBody.scrollHeight;

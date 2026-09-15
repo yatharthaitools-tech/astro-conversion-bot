@@ -85,46 +85,57 @@ GET_LTV_TIER = {
 CREDIT_COINS = {
     "name": "credit_coins",
     "description": (
-        "Requests a coin credit (refund or goodwill) for a specific "
-        "booking, or a small no-strings retention gesture with no booking "
-        "in dispute at all. The amount is ALWAYS computed server-side from "
-        "the visitor's real LTV tier and the booking's real deduction — "
-        "there is no amount field, you cannot set or influence the number. "
-        "New/Unpaid visitors (₹0 lifetime spend) are never eligible — the "
-        "call will fail cleanly for them, so still explain/offer to "
-        "reconnect/escalate instead of promising a credit first. Also "
-        "fails if this exact booking already has a refund/goodwill credit "
-        "on record — never retry a failed call with the same booking_id "
-        "expecting a different result. NOT for a pure 'astrologer took too "
-        "long to respond' timing complaint where the session DID happen — "
-        "that's create_support_ticket's job (fetch get_booking_details for "
-        "evidence, then escalate); you don't get to auto-compensate a "
-        "timing complaint on your own judgment. This is for a session that "
-        "happened but was genuinely poor/short, a factual dispute, OR a "
-        "visitor saying the app/service is too expensive and considering "
-        "leaving — omit booking_id for that retention case (it uses their "
-        "most recent booking automatically). NEVER call this as a response "
-        "to a legal threat or fraud accusation — that's create_support_ticket "
-        "only, offering coins there reads as admitting fault."
+        "Requests a coin credit for a specific booking, following the "
+        "real Refund & Bonus Logic SOP: facts decide WHETHER/HOW MUCH "
+        "gets refunded (issue_tag below), LTV only sizes the small bonus "
+        "on top — you never set or influence the amount, there is no "
+        "amount field. Pick the issue_tag that matches what actually "
+        "happened (fetch get_booking_details first if you're not sure) — "
+        "astrologer-fault tags always refund in full regardless of tier; "
+        "user-fault tags never refund; partial-fault tags refund unused "
+        "coins plus a tier-sized bonus; the no-clear-signal tags "
+        "automatically escalate to a support ticket (this tool creates it "
+        "for you in that case — don't also call create_support_ticket "
+        "yourself for the same complaint). Also use a no-clear-signal tag "
+        "for a legal threat or fraud accusation — that path always "
+        "skips any bonus and goes straight to a ticket, offering coins "
+        "there reads as admitting fault. Fails cleanly if this exact "
+        "booking already has a credit on record — never retry with the "
+        "same booking_id expecting a different result. For a visitor "
+        "saying the app/service is too expensive and considering leaving "
+        "with NO specific booking in dispute, omit booking_id entirely — "
+        "that's a separate small retention gesture, not this SOP."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "booking_id": {
                 "type": "string",
-                "description": "The booking this credit relates to. Omit for a general retention gesture with no specific booking in dispute — the visitor's most recent booking is used automatically.",
+                "description": "The disputed booking. Omit ONLY for a no-booking-in-dispute retention gesture (e.g. 'this app is too expensive').",
+            },
+            "issue_tag": {
+                "type": "string",
+                "enum": [
+                    # Step 1 — astrologer/system at fault: always refund in full.
+                    "astro_did_not_reply", "no_one_responded",
+                    "consultation_not_done_coins_deducted", "astrologer_answered_and_disconnected",
+                    # Step 2 — visitor's own fault: never refund.
+                    "user_did_not_reply", "user_replied_late",
+                    # Step 3 — partial fault: refund unused coins + tier bonus.
+                    "astrologer_took_more_time", "audio_video_not_clear",
+                    "chat_glitch_mid_session", "session_disconnected_mid_way",
+                    # Step 4 — no clear factual signal: escalate to a ticket automatically.
+                    "astrologer_not_helpful", "poor_prediction_quality",
+                    "scam_or_trust_complaint", "blank_screen_unconfirmed",
+                ],
+                "description": "Required when booking_id is set — omit only for the retention case above.",
             },
             "reason": {
                 "type": "string",
-                "enum": ["refund", "goodwill"],
-                "description": "'refund' for a factual dispute, 'goodwill' for a service-quality complaint or retention gesture.",
-            },
-            "category": {
-                "type": "string",
-                "description": "Short concern category, e.g. 'astrologer_no_response', 'call_quality', 'tech_issue', 'retention_pricing'.",
+                "description": "One-line factual summary for the ticket/audit trail if this escalates or gets reviewed later.",
             },
         },
-        "required": ["reason", "category"],
+        "required": ["reason"],
     },
 }
 

@@ -70,14 +70,25 @@ def get_booking_details(user_id: str, booking_id: str = None) -> dict:
     bid = booking_id or f"bk_{_seed(user_id, 'latest_booking') % 100000}"
     duration = _seed(f"{user_id}:{bid}", "duration") % 900  # 0-900 seconds
     astrologer_messages = _seed(f"{user_id}:{bid}", "msgs") % 5
+    user_messages = _seed(f"{user_id}:{bid}", "user_msgs") % 5
+    ended_early = _seed(f"{user_id}:{bid}", "ended_early") % 4 == 0  # ~25% dropped mid-way
     return {
         "booking_id": bid,
         "astrologer_id": ["mahalakshmi", "samrat", "nidhi"][_seed(f"{user_id}:{bid}", "astro") % 3],
         "duration_seconds": duration,
         "coins_deducted": max(10, duration // 10),
         "astrologer_message_count": astrologer_messages,
+        "user_message_count": user_messages,
+        "ended_early": ended_early,
         "status": "completed" if duration > 0 else "ended_early",
     }
+
+
+def get_monthly_bonus_count(user_id: str) -> int:
+    """How many Step-3 (partial-fault) bonuses this visitor has already
+    received this calendar month — enforces refund_service.decide()'s
+    per-tier monthly caps. Deterministic mock: 0-3."""
+    return _seed(user_id, "monthly_bonus_count") % 4
 
 
 # In-memory ledger of credits issued THIS process, keyed by (user_id,

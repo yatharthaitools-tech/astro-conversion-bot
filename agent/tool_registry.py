@@ -25,6 +25,14 @@ from integrations import (
 from services import ltv_service, refund_service, ticket_service
 
 
+_ISSUE_TAG_TO_TICKET_CATEGORY = {
+    "astrologer_not_helpful": "quality_complaint",
+    "poor_prediction_quality": "quality_complaint",
+    "scam_or_trust_complaint": "report",
+    "blank_screen_unconfirmed": "technical",
+}
+
+
 def _handle_get_payment_status(safe_input, ctx):
     return redash_client.get_payment_status(ctx.user_id)
 
@@ -45,18 +53,51 @@ def _handle_get_ltv_tier(safe_input, ctx):
 
 
 def _handle_credit_coins(safe_input, ctx):
-    booking_id = safe_input.get("booking_id")  # optional — None = most recent booking (retention case)
+    booking_id = safe_input.get("booking_id")  # omitted = no-booking retention gesture
+    issue_tag = safe_input.get("issue_tag")
     reason = safe_input.get("reason")
-    category = safe_input.get("category", "unspecified")
     if not reason:
         return {"error": "reason is required"}
-    result = ltv_service.request_credit(ctx.user_id, booking_id, reason, category)
-    if result.get("approved"):
-        # Surfaces the real free-coins bottomsheet on the app side — see
-        # free_coins_client's docstring for why this is a separate action
-        # rather than folded into the tool result the model sees.
-        ctx.ui_action = free_coins_client.build_bottomsheet(result["amount"], result["credit_id"])
-    return result
+
+    if not booking_id:
+        result = refund_service.decide_retention(ctx.user_id)
+    else:
+        if not issue_tag:
+            return {"error": "issue_tag is required when booking_id is set"}
+        result = refund_service.decide(ctx.user_id, booking_id, issue_tag, reason)
+        if result.get("route_to_ticket"):
+            severe = result.get("reason_code") == "severe_language_no_bonus"
+            category = _ISSUE_TAG_TO_TICKET_CATEGORY.get(issue_tag, "escalation" if severe else "quality_complaint")
+            ticket_service.create_ticket(
+                ctx.user_id, category, issue_tag or "escalation", reason,
+                evidence_url=ctx.last_attachment_url, session_id=ctx.session_id,
+            )
+
+    total_coins = result.get("total_coins", 0)
+    if total_coins > 0:
+        # Surfaces the real free-coins bottomsheet on the app side, then
+        # pushes straight into the connect flow too — a credit on its own
+        # is a dead end, this is the natural next step while the coins
+        # are top of mind. See free_coins_client's docstring for why this
+        # is a separate action rather than folded into what the model sees.
+        bottomsheet = free_coins_client.build_bottomsheet(total_coins, result["credit_id"])
+        connect_action = recommend_flow_client.trigger(ctx.language, None, "make the most of your new coins")
+        bottomsheet["connect"] = {
+            "astrologer": connect_action["astrologer"],
+            "display_mode": connect_action["display_mode"],
+        }
+        ctx.ui_action = bottomsheet
+
+    return {
+        "step": result.get("step"),
+        "refund_coins": result.get("refund_coins", 0),
+        "bonus_coins": result.get("bonus_coins", 0),
+        "total_coins": total_coins,
+        "tier": result.get("tier"),
+        "reason_code": result.get("reason_code"),
+        "escalated_to_ticket": result.get("route_to_ticket", False),
+        "mandatory_human_followup": result.get("mandatory_human_followup", False),
+    }
 
 
 def _handle_search_astrologers(safe_input, ctx):
