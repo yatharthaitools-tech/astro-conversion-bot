@@ -343,10 +343,15 @@ LOG_FEATURE_REQUEST = {
 MARK_ISSUE_RESOLVED = {
     "name": "mark_issue_resolved",
     "description": (
-        "Call this ONLY after you actually helped resolve a real problem "
-        "(not a simple factual lookup) and the visitor confirmed it's "
-        "fixed. Never creates a ticket — just closes the thread cleanly. "
-        "Do not call this for questions you just answered informationally."
+        "Call this whenever the conversation is actually winding down — "
+        "either because you helped resolve a real problem and the visitor "
+        "confirmed it's fixed, OR because you asked if they need anything "
+        "else and they said no/that's all/bye. This is what puts up the "
+        "rating card and closes the chat, so don't skip it and just say "
+        "bye in text — that leaves the visitor stuck with no rating and "
+        "an open chat. Never creates a ticket either way. Do not call "
+        "this mid-conversation for a question you just answered "
+        "informationally with no ending signal from the visitor."
     ),
     "input_schema": {
         "type": "object",
