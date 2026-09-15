@@ -298,6 +298,51 @@ button, input { font: inherit; }
 }
 .feedback-skip:hover { color: var(--ink); }
 
+/* --- Inactivity nudge — fires once if the visitor goes quiet
+   mid-conversation, offering the two real next steps directly instead
+   of leaving the chat hanging with no signal either way. */
+.nudge-card {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.message.nudge-card {
+  background: linear-gradient(180deg, #fff9f3, white);
+  border: 1px solid rgba(255, 111, 61, 0.18);
+  box-shadow: 0 6px 18px rgba(232, 83, 47, 0.08);
+}
+.nudge-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.nudge-actions {
+  display: flex;
+  gap: 8px;
+}
+.nudge-btn {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nudge-btn:hover { background: var(--cream); }
+.nudge-btn-primary {
+  border: none;
+  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
+  color: white;
+}
+.nudge-btn-primary:hover { filter: brightness(1.05); }
+
 @media (max-width: 480px) {
   html, body { display: block; }
   .chat-modal {

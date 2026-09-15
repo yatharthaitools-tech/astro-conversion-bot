@@ -10,6 +10,7 @@ handling it.
 from flask import Blueprint, redirect, render_template, request, url_for
 
 from dashboard import auth, db, health
+from services import ticket_service
 
 bp = Blueprint('dashboard', __name__, url_prefix='/admin', template_folder='templates')
 
@@ -141,7 +142,7 @@ def ticket_detail(ticket_id):
         new_status = request.form.get('status')
         note = request.form.get('note') or None
         if new_status in db.TICKET_STATUSES:
-            db.update_ticket_status(ticket_id, new_status, note)
+            ticket_service.update_ticket_status(ticket_id, new_status, note)
         return redirect(url_for('dashboard.ticket_detail', ticket_id=ticket_id))
 
     ticket = db.get_ticket(ticket_id)

@@ -11,6 +11,27 @@ const welcomeMessage = "Hi! I'm here to help you figure things out. What's been 
 // at least one turn's gap since the last one before showing another.
 let turnsSinceLastCard = Infinity;
 
+// Nudges a visitor who's gone quiet mid-conversation instead of just
+// leaving the chat sitting open with no signal either way. Armed after
+// each bot reply, cleared on any new activity (sending a message, or the
+// chat ending) — fires once per idle window, not repeatedly.
+const INACTIVITY_MS = 10000;
+let inactivityTimer = null;
+let hasStartedConversation = false;
+
+function armInactivityTimer() {
+  clearInactivityTimer();
+  if (!hasStartedConversation || chatInput.disabled) return;
+  inactivityTimer = setTimeout(showInactivityNudge, INACTIVITY_MS);
+}
+
+function clearInactivityTimer() {
+  if (inactivityTimer) {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = null;
+  }
+}
+
 function getSessionId() {
   let sessionId = sessionStorage.getItem('astro_session_id');
   if (!sessionId) {
@@ -87,6 +108,7 @@ async function sendToBot(text) {
     const answer = data.answer || "I don't have information regarding that.";
     typingEl.remove();
     appendMessage('bot', answer);
+    hasStartedConversation = true;
 
     turnsSinceLastCard += 1;
     if (data.action && data.action.type === 'connect_popup') {
@@ -100,17 +122,23 @@ async function sendToBot(text) {
 
     if (data.show_feedback) {
       showFeedbackPrompt(data.session_id);
+    } else {
+      armInactivityTimer();
     }
   } catch (error) {
     await minDelay;
     typingEl.remove();
     appendMessage('bot', "I don't have information regarding that.");
+    hasStartedConversation = true;
+    armInactivityTimer();
   }
 }
 
 async function sendMessage(overrideText) {
   const text = (overrideText !== undefined ? overrideText : chatInput.value || '').trim();
   if (!text) return;
+
+  clearInactivityTimer();
 
   // Quick replies are an opening prompt, not a persistent menu — once the
   // conversation actually starts, keep the screen to just the chat itself.
@@ -122,6 +150,7 @@ async function sendMessage(overrideText) {
 }
 
 async function handlePhotoUpload(file) {
+  clearInactivityTimer();
   const formData = new FormData();
   formData.append('file', file);
 
@@ -172,6 +201,52 @@ function triggerNativeConnect(mode, astrologer, isGeneric) {
     matchType: isGeneric ? 'best_match' : 'specific',
     astrologerId: isGeneric ? null : astrologer.id,
   });
+}
+
+// Fires once after INACTIVITY_MS of no visitor activity mid-conversation
+// — rather than leaving them sitting on a reply with no signal either
+// way, offers the two real next steps directly: connect with someone, or
+// close this out. Both route through the normal sendMessage path (same
+// as a quick reply) instead of a one-off client-side action, so the
+// model still decides how to actually handle it.
+function showInactivityNudge() {
+  if (chatInput.disabled) return;
+
+  const card = document.createElement('div');
+  card.className = 'message bot nudge-card';
+
+  const label = document.createElement('div');
+  label.className = 'nudge-label';
+  label.textContent = "Still there? Want me to connect you with an astrologer, or should we close this out?";
+  card.appendChild(label);
+
+  const actions = document.createElement('div');
+  actions.className = 'nudge-actions';
+
+  const connectBtn = document.createElement('button');
+  connectBtn.type = 'button';
+  connectBtn.className = 'nudge-btn nudge-btn-primary';
+  connectBtn.textContent = 'Connect me';
+  connectBtn.addEventListener('click', () => {
+    card.remove();
+    sendMessage('Yes, connect me with an astrologer');
+  });
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'nudge-btn';
+  closeBtn.textContent = 'Close it out';
+  closeBtn.addEventListener('click', () => {
+    card.remove();
+    sendMessage("I'm done, please close this out");
+  });
+
+  actions.appendChild(connectBtn);
+  actions.appendChild(closeBtn);
+  card.appendChild(actions);
+
+  chatBody.appendChild(card);
+  chatBody.scrollTop = chatBody.scrollHeight;
 }
 
 // A resolved issue shouldn't leave the chat sitting open indefinitely —
@@ -248,6 +323,7 @@ async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
 }
 
 function closeChat() {
+  clearInactivityTimer();
   sendToNativeHost({ type: 'CLOSE_CHAT' });
   // No host app (plain-browser testing) — there's nothing to dismiss, so
   // lock the widget itself into an ended state instead of leaving it open.

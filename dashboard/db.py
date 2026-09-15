@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     ltv_tier TEXT,
     status TEXT NOT NULL DEFAULT 'Open',
     created_at TEXT NOT NULL,
-    resolved_at TEXT
+    resolved_at TEXT,
+    zoho_ticket_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ticket_status_history (
@@ -98,6 +99,7 @@ _MIGRATIONS = [
     "ALTER TABLE conversations ADD COLUMN resolved_at TEXT",
     "ALTER TABLE conversations ADD COLUMN rating INTEGER",
     "ALTER TABLE conversations ADD COLUMN rated_at TEXT",
+    "ALTER TABLE tickets ADD COLUMN zoho_ticket_id TEXT",
 ]
 
 
@@ -266,15 +268,16 @@ def get_conversation(session_id: str) -> dict:
 # --- Tickets -----------------------------------------------------------
 
 def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
-                   sub_category: str, description: str, evidence_url: str, ltv_tier: str) -> None:
+                   sub_category: str, description: str, evidence_url: str, ltv_tier: str,
+                   zoho_ticket_id: str = None) -> None:
     now = _now()
     try:
         with _connect() as conn:
             cur = conn.execute(
                 """INSERT INTO tickets (ticket_ref, session_id, user_id, category, sub_category,
-                                         description, evidence_url, ltv_tier, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?)""",
-                (ticket_ref, session_id, user_id, category, sub_category, description, evidence_url, ltv_tier, now),
+                                         description, evidence_url, ltv_tier, status, created_at, zoho_ticket_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?, ?)""",
+                (ticket_ref, session_id, user_id, category, sub_category, description, evidence_url, ltv_tier, now, zoho_ticket_id),
             )
             conn.execute(
                 "INSERT INTO ticket_status_history (ticket_id, status, note, changed_at) VALUES (?, 'Open', 'Ticket created', ?)",
@@ -285,6 +288,18 @@ def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
 
 
 TICKET_STATUSES = ["Open", "In Progress", "Resolved", "Closed"]
+
+
+def list_tickets_for_user(user_id: str, limit: int = 20) -> list:
+    """Used by get_tickets — the local dashboard DB is the queryable
+    source of truth for a visitor's own ticket history, not a live Zoho
+    Desk search (which would need a contact/lookup this app doesn't have)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tickets WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def list_tickets(limit: int = 50, offset: int = 0, status: str = None,

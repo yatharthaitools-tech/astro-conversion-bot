@@ -39,6 +39,9 @@
         <h2>Details</h2>
         <div class="side-field"><span class="label">User</span><span class="mono">{{ ticket.user_id }}</span></div>
         <div class="side-field"><span class="label">LTV tier</span>{{ ticket.ltv_tier or '—' }}</div>
+        {% if ticket.zoho_ticket_id %}
+        <div class="side-field"><span class="label">Zoho ticket</span><span class="mono">{{ ticket.zoho_ticket_id }}</span></div>
+        {% endif %}
         <div class="side-field"><span class="label">Created</span>{{ ticket.created_at[:19].replace('T', ' ') }}</div>
         {% if ticket.resolved_at %}
         <div class="side-field"><span class="label">Resolved</span>{{ ticket.resolved_at[:19].replace('T', ' ') }}</div>
