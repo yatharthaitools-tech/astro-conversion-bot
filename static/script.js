@@ -15,7 +15,7 @@ let turnsSinceLastCard = Infinity;
 // leaving the chat sitting open with no signal either way. Armed after
 // each bot reply, cleared on any new activity (sending a message, or the
 // chat ending) — fires once per idle window, not repeatedly.
-const INACTIVITY_MS = 10000;
+const INACTIVITY_MS = 20000;
 let inactivityTimer = null;
 let hasStartedConversation = false;
 
@@ -31,6 +31,15 @@ function clearInactivityTimer() {
     inactivityTimer = null;
   }
 }
+
+// Handed off by the native app via ?user_id=...&oauth_token=... on the
+// page it opened this WebView with — see app.py's / route, which reads
+// them into these data attributes. Read once at load and carried on
+// every /ask call below; empty when this page is opened without them
+// (plain browser testing), in which case the backend falls back to its
+// own session-derived pseudo-id.
+const appUserId = document.body.dataset.userId || '';
+const appOauthToken = document.body.dataset.oauthToken || '';
 
 function getSessionId() {
   let sessionId = sessionStorage.getItem('astro_session_id');
@@ -98,7 +107,9 @@ async function sendToBot(text) {
         body: JSON.stringify({
           question: text,
           session_id: getSessionId(),
-          history: history.slice(0, -1)
+          history: history.slice(0, -1),
+          user_id: appUserId,
+          oauth_token: appOauthToken,
         })
       }),
       minDelay
