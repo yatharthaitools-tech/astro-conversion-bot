@@ -129,6 +129,11 @@ async function sendToBot(text) {
       }
       // Otherwise: a card was just shown last turn — the reply text still
       // carries the offer, but we don't repeat the same card back-to-back.
+    } else if (data.action && data.action.type === 'free_coins_bottomsheet') {
+      // Not rendered in-chat at all — this is the app's own existing
+      // bottomsheet UI, so just hand the payload straight to native in
+      // the exact shape its real free-coins API already returns.
+      sendToNativeHost({ type: 'SHOW_FREE_COINS_BOTTOMSHEET', freeCoins: data.action.freeCoins });
     }
 
     if (data.show_feedback) {

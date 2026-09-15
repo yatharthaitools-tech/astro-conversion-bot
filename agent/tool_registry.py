@@ -16,6 +16,7 @@ UI's own JSON shape.
 from integrations import (
     coin_credit_client,
     faq_client,
+    free_coins_client,
     offers_client,
     payment_bottomsheet_client,
     recommend_flow_client,
@@ -49,7 +50,13 @@ def _handle_credit_coins(safe_input, ctx):
     category = safe_input.get("category", "unspecified")
     if not reason:
         return {"error": "reason is required"}
-    return ltv_service.request_credit(ctx.user_id, booking_id, reason, category)
+    result = ltv_service.request_credit(ctx.user_id, booking_id, reason, category)
+    if result.get("approved"):
+        # Surfaces the real free-coins bottomsheet on the app side — see
+        # free_coins_client's docstring for why this is a separate action
+        # rather than folded into the tool result the model sees.
+        ctx.ui_action = free_coins_client.build_bottomsheet(result["amount"], result["credit_id"])
+    return result
 
 
 def _handle_search_astrologers(safe_input, ctx):
