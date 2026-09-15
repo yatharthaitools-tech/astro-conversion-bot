@@ -8,12 +8,21 @@ rule-based responder. Nothing else in the app requires real credentials.
 The credentials JSON itself is read only from the environment — never
 hardcode it here, and never commit a real value into GEMINI_VERTEX_CREDENTIALS_JSON
 in any tracked file (this repo is public).
+
+Parsed with yaml.safe_load, not json.loads — YAML is a superset of JSON,
+so a flat single-line JSON string (the shape a plain .env file needs)
+still parses identically, but this also accepts the block-literal YAML
+shape a secret-manager UI (Devtron, a raw Kubernetes Secret manifest,
+etc.) naturally produces for multi-line values — where the private key's
+real line breaks are actual newlines, not the backslash-n escapes JSON
+requires. Trying to force JSON's escaping convention through a YAML-based
+secrets UI is exactly what broke this the first two times.
 """
-import json
 import logging
 import os
 
 import requests
+import yaml
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
 
@@ -42,8 +51,8 @@ _credentials_load_failed = False
 def _load_credentials():
     """Parses GEMINI_VERTEX_CREDENTIALS_JSON and builds credentials once.
 
-    Caches failure too, so a bad/missing value doesn't retry JSON parsing
-    on every request.
+    Caches failure too, so a bad/missing value doesn't retry parsing on
+    every request.
     """
     global _credentials, _project_id, _credentials_load_failed
 
@@ -56,12 +65,14 @@ def _load_credentials():
         return
 
     try:
-        info = json.loads(raw)
+        info = yaml.safe_load(raw)
+        if not isinstance(info, dict):
+            raise ValueError(f"expected a mapping, got {type(info).__name__}")
         _credentials = service_account.Credentials.from_service_account_info(
             info, scopes=_SCOPES
         )
         _project_id = info['project_id']
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
+    except (yaml.YAMLError, KeyError, ValueError) as exc:
         logger.warning('Failed to parse GEMINI_VERTEX_CREDENTIALS_JSON: %s', exc)
         _credentials_load_failed = True
 
@@ -80,7 +91,7 @@ def configuration_error() -> str:
         return None
     if not os.environ.get('GEMINI_VERTEX_CREDENTIALS_JSON'):
         return "GEMINI_VERTEX_CREDENTIALS_JSON is not set"
-    return "GEMINI_VERTEX_CREDENTIALS_JSON is set but failed to parse — check the service-account JSON"
+    return "GEMINI_VERTEX_CREDENTIALS_JSON is set but failed to parse — check the service-account credentials (JSON or YAML)"
 
 
 def _get_access_token() -> str:
