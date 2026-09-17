@@ -29,6 +29,7 @@ exactly ctx.trace's shape) — read back for display, never queried into.
 import json
 import logging
 import os
+import re
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -37,9 +38,21 @@ import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.environ.get(
+
+def _normalize_database_url(url: str) -> str:
+    """Strips a SQLAlchemy-style '+driver' off the scheme (e.g.
+    'postgresql+psycopg2://' -> 'postgresql://') — psycopg2.connect() is
+    called directly here, no SQLAlchemy involved, and rejects the
+    '+driver' form outright ('invalid dsn: missing "=" after ...').
+    Ops-provided connection strings for this org's other services use
+    that SQLAlchemy form, so tolerate it rather than requiring it be
+    hand-edited before it's pasted into Devtron."""
+    return re.sub(r'^(postgres(?:ql)?)\+\w+://', r'\1://', url)
+
+
+DATABASE_URL = _normalize_database_url(os.environ.get(
     'DATABASE_URL', 'postgresql://astrobot:astrobot@localhost:5432/astro_conversion_bot'
-)
+))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
