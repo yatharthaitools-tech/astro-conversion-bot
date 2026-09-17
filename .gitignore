@@ -8,4 +8,3 @@ node_modules/
 .venv
 logs/
 static/uploads/
-dashboard.db

@@ -7,15 +7,26 @@ Without this, the strip-and-overwrite in executor.py was only ever
 eyeballed, never proven: a future refactor could silently reintroduce a
 path that trusts tool_input's user_id, and nothing would catch it.
 """
+import pytest
+
 from agent import executor as agent_executor
 from agent.context import SessionContext
 from dashboard import db as dashboard_db
 
 
-def test_create_support_ticket_ignores_spoofed_user_id(monkeypatch, tmp_path):
-    monkeypatch.setattr(dashboard_db, "DB_PATH", str(tmp_path / "test_dashboard.db"))
+@pytest.fixture(autouse=True)
+def _clean_db():
+    """Runs against a real Postgres instance (DATABASE_URL, default: the
+    local dev database) rather than a throwaway SQLite file, so each test
+    starts from empty tables instead of a fresh temp file."""
     dashboard_db.init_db()
+    with dashboard_db._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE ticket_status_history, tickets, messages, conversations CASCADE")
+    yield
 
+
+def test_create_support_ticket_ignores_spoofed_user_id():
     real_user_id = "u_real_verified_user"
     ctx = SessionContext(user_id=real_user_id, session_id="sess-security-test", language="en")
     # Real requests get this from app.py's /ask route before the agent
