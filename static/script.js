@@ -222,12 +222,33 @@ function sendToNativeHost(payload) {
   return false;
 }
 
+// Generic native-action bridge — the contract the React Native side reads
+// on its WebView onMessage handler: {action: '<name>', ...params}. Every
+// new action this bot ever needs to trigger on the app is just another
+// call to this with its own action name/params, no new bridge mechanism
+// required. Confirmed shape so far: {action: 'start_random_flow',
+// service_type: 'chat' | 'call'} for "connect me with any astrologer" —
+// still need the real action name for CLOSE_CHAT, SHOW_FREE_COINS_BOTTOMSHEET,
+// and connecting to a SPECIFICALLY named astrologer before those migrate too.
+function sendNativeAction(action, params = {}) {
+  return sendToNativeHost({ action, ...params });
+}
+
 function triggerNativeConnect(mode, astrologer, isGeneric) {
+  if (isGeneric) {
+    // Real, confirmed contract — the app's own matching system picks who
+    // to connect to (this bot never does, see pick_best_match()'s own
+    // placeholder note server-side).
+    sendNativeAction('start_random_flow', { service_type: mode });
+    return;
+  }
+  // Visitor named a specific astrologer — real action name not confirmed
+  // yet, so this still sends the placeholder contract until it is.
   sendToNativeHost({
     type: 'CONNECT_ASTROLOGER',
-    mode, // 'chat' | 'call'
-    matchType: isGeneric ? 'best_match' : 'specific',
-    astrologerId: isGeneric ? null : astrologer.id,
+    mode,
+    matchType: 'specific',
+    astrologerId: astrologer.id,
   });
 }
 
