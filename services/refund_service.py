@@ -26,6 +26,11 @@ def check_eligibility(user_id: str, booking_id: str) -> dict:
         return {"qualifies": True, "already_refunded": True, "booking": booking, "existing": existing}
 
     result = coin_credit_client.credit(user_id, booking_id, booking["coins_deducted"], "refund")
+    if not result["success"]:
+        # The real credit call failed — must NOT record this as credited
+        # (that would poison the dedupe check above and block a retry)
+        # or report an amount/credit_id as if coins actually moved.
+        return {"qualifies": True, "already_refunded": False, "credit_failed": True, "booking": booking}
     redash_client.record_credit(user_id, booking_id, "refund", booking["coins_deducted"])
     return {
         "qualifies": True,
@@ -96,13 +101,20 @@ def _is_severe(reason: str) -> bool:
     return any(kw in lowered for kw in _SEVERE_KEYWORDS)
 
 
-def _credit(user_id: str, booking_id: str, coins: int, purpose: str) -> str:
-    """Returns the credit_id, or None if there's nothing to credit."""
+def _credit(user_id: str, booking_id: str, coins: int, purpose: str) -> tuple:
+    """Returns (credit_id, succeeded). "Nothing owed" (coins <= 0) and "the
+    real credit call failed" both come back as credit_id=None, but callers
+    MUST check `succeeded` — a failed credit must never be reported to the
+    visitor as coins landing, and record_credit() (which feeds the dedupe
+    check above) must never fire for a credit that didn't actually happen,
+    or a legitimate retry would be silently blocked forever."""
     if coins <= 0:
-        return None
+        return None, True
     result = coin_credit_client.credit(user_id, booking_id, coins, purpose)
+    if not result["success"]:
+        return None, False
     redash_client.record_credit(user_id, booking_id, purpose, coins)
-    return result["credit_id"]
+    return result["credit_id"], True
 
 
 def decide(user_id: str, booking_id: str, issue_tag: str, reason: str = "") -> dict:
@@ -129,7 +141,9 @@ def decide(user_id: str, booking_id: str, issue_tag: str, reason: str = "") -> d
     coins_deducted = booking.get("coins_deducted", 0)
 
     if issue_tag in STEP1_ASTROLOGER_FAULT:
-        credit_id = _credit(user_id, booking_id, coins_deducted, "refund")
+        credit_id, ok = _credit(user_id, booking_id, coins_deducted, "refund")
+        if not ok:
+            return {**base, "step": 1, "route_to_ticket": True, "reason_code": "step1_credit_failed"}
         return {**base, "step": 1, "refund_coins": coins_deducted, "total_coins": coins_deducted,
                 "credit_id": credit_id, "reason_code": "step1_full_refund"}
 
@@ -148,7 +162,9 @@ def decide(user_id: str, booking_id: str, issue_tag: str, reason: str = "") -> d
             # month is routed to a human rather than kept fully automatic.
             route_to_ticket = True
         total = coins_deducted + bonus
-        credit_id = _credit(user_id, booking_id, total, "refund_plus_bonus")
+        credit_id, ok = _credit(user_id, booking_id, total, "refund_plus_bonus")
+        if not ok:
+            return {**base, "step": 3, "route_to_ticket": True, "reason_code": "step3_credit_failed"}
         return {**base, "step": 3, "route_to_ticket": route_to_ticket, "refund_coins": coins_deducted,
                 "bonus_coins": bonus, "total_coins": total, "credit_id": credit_id,
                 "reason_code": "step3_partial_fault"}
@@ -157,7 +173,10 @@ def decide(user_id: str, booking_id: str, issue_tag: str, reason: str = "") -> d
     # an optional small goodwill sized at half Step 3's percentage.
     goodwill_pct = _STEP4_GOODWILL_PCT[tier]
     goodwill = round(coins_deducted * goodwill_pct) if goodwill_pct else 0
-    credit_id = _credit(user_id, booking_id, goodwill, "goodwill_pending_ticket")
+    credit_id, ok = _credit(user_id, booking_id, goodwill, "goodwill_pending_ticket")
+    if not ok:
+        return {**base, "step": 4, "route_to_ticket": True, "reason_code": "step4_credit_failed",
+                "mandatory_human_followup": True}
     return {**base, "step": 4, "route_to_ticket": True, "bonus_coins": goodwill, "total_coins": goodwill,
             "credit_id": credit_id, "reason_code": "step4_escalate",
             "mandatory_human_followup": tier == "high"}
@@ -176,5 +195,7 @@ def decide_retention(user_id: str) -> dict:
     if amount <= 0:
         return {"tier": tier, "total_coins": 0, "credit_id": None, "reason_code": "new_unpaid_ineligible"}
     result = coin_credit_client.credit(user_id, None, amount, "retention")
+    if not result["success"]:
+        return {"tier": tier, "total_coins": 0, "credit_id": None, "reason_code": "retention_credit_failed"}
     redash_client.record_credit(user_id, None, "retention", amount)
     return {"tier": tier, "total_coins": amount, "credit_id": result["credit_id"], "reason_code": "retention_gesture"}
