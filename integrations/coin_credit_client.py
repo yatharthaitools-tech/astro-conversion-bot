@@ -5,7 +5,7 @@ calls, confirmed directly against that node's own config:
     POST <COIN_CREDIT_API_URL>
     Authorization: Basic <COIN_CREDIT_API_AUTH>
     Body (a JSON ARRAY of one object — confirmed shape, not guessed):
-        [{"userId": ..., "amount": ..., "purpose": "goodwill",
+        [{"userId": ..., "amount": ..., "purpose": "promo",
           "description": ..., "source": "n8n"}]
 
 Falls back to the old mocked no-op path when COIN_CREDIT_API_AUTH isn't
@@ -13,15 +13,13 @@ set — same posture as every other real-vs-mock integration in this app,
 and deliberately NOT defaulted to anything: this moves real money, so it
 only goes live when someone explicitly sets the credential.
 
-CONFIRMED: the n8n node hardcodes purpose="goodwill" for every
-transaction — it does not vary this per refund/bonus/retention. Whether
-system-transactions accepts OTHER purpose values (to carry our SOP's
-finer-grained refund/bonus/retention distinction into the real ledger)
-is UNCONFIRMED — until that's confirmed with whoever owns this API, this
-always sends "goodwill" too, matching the one proven-working case,
-rather than guessing at values that might be silently misclassified.
-`reason` (this module's own param) still carries the real distinction
-into our own dashboard DB via services/refund_service.py's
+The n8n node itself hardcodes purpose="goodwill" for every transaction —
+it does not vary this per refund/bonus/retention. Confirmed with the
+app owner that this bot's own transactions should use "promo" instead
+(not "goodwill", and not varied per SOP step/category either — every
+credit_coins-driven transaction sends the same "promo" value). `reason`
+(this module's own param) still carries the real refund/bonus/retention
+distinction into our own dashboard DB via services/refund_service.py's
 redash_client.record_credit() call right after this.
 
 UNCONFIRMED, flagged for whoever runs the first live test:
@@ -59,7 +57,7 @@ def credit(user_id: str, booking_id: str, amount: int, reason: str) -> dict:
             json=[{
                 "userId": user_id,
                 "amount": amount,
-                "purpose": "goodwill",
+                "purpose": "promo",
                 "description": booking_id or reason,
                 "source": "astro_conversion_bot",
             }],

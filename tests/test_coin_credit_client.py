@@ -43,7 +43,7 @@ def test_real_request_matches_confirmed_n8n_payload_shape(monkeypatch):
     assert result["success"] is True
     assert captured["url"] == "https://api.astrolokal.com/v1/system-transactions/"
     assert captured["json"] == [{
-        "userId": "u1", "amount": 80, "purpose": "goodwill",
+        "userId": "u1", "amount": 80, "purpose": "promo",
         "description": "bk1", "source": "astro_conversion_bot",
     }]
     assert captured["headers"]["Authorization"] == "Basic test-b64-creds"
