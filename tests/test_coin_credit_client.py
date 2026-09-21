@@ -1,10 +1,11 @@
 """coin_credit_client.credit() is the one function in this codebase that
 moves real money once COIN_CREDIT_API_AUTH is set — these tests mock
 requests.post with the exact payload shape confirmed against a working
-curl example (dev-api.astrolokal.com, Basic Auth), and run the
-at-most-once gate (dashboard.db.reserve_coin_credit_attempt) against a
-real Postgres instance rather than mocking it, since insert-race
-behavior is exactly the kind of thing a mock can't meaningfully fake.
+curl example against production (api.astrolokal.com, Basic Auth; no dev
+environment is available), and run the at-most-once gate
+(dashboard.db.reserve_coin_credit_attempt) against a real Postgres
+instance rather than mocking it, since insert-race behavior is exactly
+the kind of thing a mock can't meaningfully fake.
 """
 import pytest
 from unittest.mock import patch
@@ -30,6 +31,14 @@ def test_mock_mode_without_api_auth(monkeypatch):
     assert result["success"] is True
     assert result["credit_id"]
     assert result["amount"] == 50
+
+
+def test_rejects_non_positive_amount():
+    """Matches daily-cast's own guard (Number.isInteger(amount) && amount > 0)
+    in fireCoinCredit() — reject before ever touching the gate or network."""
+    for bad_amount in (0, -5, 1.5):
+        with pytest.raises(ValueError):
+            coin_credit_client.credit("u1", "bk1", bad_amount, "refund")
 
 
 def test_duplicate_booking_credit_is_suppressed_even_in_mock_mode(monkeypatch):
@@ -65,7 +74,7 @@ def test_real_request_matches_confirmed_payload_shape(monkeypatch):
         result = coin_credit_client.credit("4851070", "bk1", 80, "refund")
 
     assert result["success"] is True
-    assert captured["url"] == "https://dev-api.astrolokal.com/v1/system-transactions/"
+    assert captured["url"] == "https://api.astrolokal.com/v1/system-transactions/"
     assert captured["json"] == [{
         "userId": 4851070, "amount": "80.00", "purpose": "promo",
         "description": "bk1", "source": "astro_conversion_bot",

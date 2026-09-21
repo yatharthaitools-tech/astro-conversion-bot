@@ -1,23 +1,18 @@
 """Real call to AstroLokal's system-transactions API — confirmed against
-a working example (curl, Basic Auth, exact payload shape) for the DEV
-environment specifically:
+a working example (curl, Basic Auth, exact payload shape), and
+independently cross-checked field-by-field against a sibling app's
+(daily-cast) own integration with this exact same API:
 
-    POST <COIN_CREDIT_API_URL>  (default: dev-api.astrolokal.com)
+    POST <COIN_CREDIT_API_URL>  (default: api.astrolokal.com, production —
+                                  no dev environment/credential available)
     Authorization: Basic <COIN_CREDIT_API_AUTH>
     Body (a JSON ARRAY of one object):
         [{"userId": ..., "amount": "10.00", "purpose": "promo",
           "description": ..., "source": "astro_conversion_bot"}]
 
-Whatever value COIN_CREDIT_API_AUTH holds is explicitly a DEV-ONLY
-credential — a separate production credential will be issued once dev
-is confirmed working. Don't assume a dev credential works against
-api.astrolokal.com (production); one was confirmed to NOT (real 401,
-"Invalid username/password") before dev-api.astrolokal.com turned out
-to be the actual intended host for it.
-
 Falls back to the old mocked no-op path when COIN_CREDIT_API_AUTH isn't
-set — this moves real money/coins even on dev, so it only goes live
-when someone explicitly sets the credential.
+set — this moves real money/coins, so it only goes live when someone
+explicitly sets the credential.
 
 `amount` is sent as a string formatted to 2 decimal places ("10.00"),
 matching the confirmed-working example exactly — not the int this
@@ -69,7 +64,7 @@ from dashboard import db as dashboard_db
 logger = logging.getLogger(__name__)
 
 COIN_CREDIT_API_URL = os.environ.get(
-    'COIN_CREDIT_API_URL', 'https://dev-api.astrolokal.com/v1/system-transactions/'
+    'COIN_CREDIT_API_URL', 'https://api.astrolokal.com/v1/system-transactions/'
 )
 COIN_CREDIT_API_AUTH = os.environ.get('COIN_CREDIT_API_AUTH', '')
 
@@ -85,6 +80,11 @@ def _idempotency_key(user_id: str, booking_id: str) -> str:
 
 
 def credit(user_id: str, booking_id: str, amount: int, reason: str) -> dict:
+    # Matches daily-cast's own guard in fireCoinCredit() — reject before
+    # ever touching the gate or the network, not after.
+    if not isinstance(amount, int) or amount <= 0:
+        raise ValueError("coin_credit_client.credit: amount must be a positive integer")
+
     idempotency_key = _idempotency_key(user_id, booking_id)
     live = bool(COIN_CREDIT_API_AUTH)
 
