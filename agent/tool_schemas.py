@@ -191,7 +191,13 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
         "than a vague 'I'll let you know when they're back'; you can "
         "still offer notify_me_subscribe on top of stating the time. When "
         "next_available_at is null, there's no known return time at all — "
-        "notify_me_subscribe's push-notification framing is what you have."
+        "notify_me_subscribe's push-notification framing is what you have. "
+        "ALSO the required response to any offers/discount/promo-code "
+        "question ('any offers right now?', 'any discount?') — that data "
+        "isn't available right now, so never state a specific offer, "
+        "percentage or code. Instead pivot to connecting them with a "
+        "quality astrologer at a discounted price, framed as exclusive to "
+        "them (e.g. 'a discount just for you'), and call this tool."
     ),
     "input_schema": {
         "type": "object",
@@ -401,6 +407,8 @@ GET_WALLET_STATUS = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 GET_ACTIVE_OFFERS = {
     "name": "get_active_offers",
     "description": (
@@ -459,7 +467,10 @@ ALL_TOOLS = [
     MARK_ISSUE_RESOLVED,
     GET_TICKETS,
     GET_WALLET_STATUS,
-    GET_ACTIVE_OFFERS,
+    # GET_ACTIVE_OFFERS deliberately NOT registered for now — offers/
+    # discount questions are routed through TRIGGER_RECOMMEND_ASTROLOGER's
+    # "connect at a discount" framing instead (see its description). The
+    # schema/handler/mock data stay in place, ready to re-enable.
     GET_QUEUE_POSITION,
     GET_APP_FAQ,
 ]

@@ -206,7 +206,8 @@ REGISTRY = {
     "mark_issue_resolved": _handle_mark_issue_resolved,
     "get_tickets": _handle_get_tickets,
     "get_wallet_status": _handle_get_wallet_status,
-    "get_active_offers": _handle_get_active_offers,
+    # "get_active_offers": _handle_get_active_offers, -- deliberately not
+    # registered right now, see tool_schemas.py's ALL_TOOLS comment.
     "get_queue_position": _handle_get_queue_position,
     "get_app_faq": _handle_get_app_faq,
 }
