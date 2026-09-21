@@ -14,7 +14,7 @@ from services import refund_service
 
 
 def test_step1_credit_failure_reports_zero_and_does_not_poison_dedupe(monkeypatch):
-    monkeypatch.setattr(coin_credit_client, "COIN_CREDIT_WEBHOOK_URL", "https://n8n.getlokalapp.com/webhook/astro-bot-credit-coins")
+    monkeypatch.setattr(coin_credit_client, "COIN_CREDIT_API_AUTH", "test-b64-creds")
     user_id, booking_id = "u_fail_step1", "bk_fail_step1"
 
     with patch("integrations.coin_credit_client.requests.post", side_effect=requests.RequestException("down")):
@@ -30,7 +30,7 @@ def test_step1_credit_failure_reports_zero_and_does_not_poison_dedupe(monkeypatc
 
 
 def test_retention_credit_failure_reports_zero(monkeypatch):
-    monkeypatch.setattr(coin_credit_client, "COIN_CREDIT_WEBHOOK_URL", "https://n8n.getlokalapp.com/webhook/astro-bot-credit-coins")
+    monkeypatch.setattr(coin_credit_client, "COIN_CREDIT_API_AUTH", "test-b64-creds")
     # Hashes to the "mid" LTV tier (a nonzero retention amount), so this
     # actually exercises the failed-credit branch rather than short-
     # circuiting on the "new_unpaid, nothing owed" path.
