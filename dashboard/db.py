@@ -22,6 +22,16 @@ Schema:
             sub_category, description, evidence_url, ltv_tier, status,
             created_at, resolved_at)
     ticket_status_history(id PK, ticket_id FK, status, note, changed_at)
+    coin_credit_attempts(id PK, idempotency_key UNIQUE, user_id, booking_id,
+                          amount, status, http_status, response, error,
+                          created_at, updated_at) — at-most-once firing gate
+        for integrations/coin_credit_client.py, same pattern as the
+        daily-cast app's own coin_credit_attempts table for the identical
+        no-idempotency-of-its-own Coin API: an attempt row is inserted
+        (UNIQUE idempotency_key) BEFORE the real HTTP call, so a
+        concurrent/repeated credit_coins call loses the insert race and
+        never fires twice. A non-success row is never auto-retried — it's
+        the reconciliation worklist for ops.
 
 `tool_trace` is stored as JSONB (list of {"tool": str, "ok": bool} dicts,
 exactly ctx.trace's shape) — read back for display, never queried into.
@@ -103,11 +113,26 @@ CREATE TABLE IF NOT EXISTS ticket_status_history (
     changed_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS coin_credit_attempts (
+    id SERIAL PRIMARY KEY,
+    idempotency_key TEXT UNIQUE NOT NULL,
+    user_id TEXT NOT NULL,
+    booking_id TEXT,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    http_status INTEGER,
+    response JSONB,
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_last_seen ON conversations(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+CREATE INDEX IF NOT EXISTS idx_coin_credit_attempts_status ON coin_credit_attempts(status);
 """
 
 # Columns added after the initial release — safe to re-run against a
@@ -417,6 +442,52 @@ def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
     except psycopg2.Error:
         logger.warning("update_ticket_status failed for ticket %s", ticket_id, exc_info=True)
         return False
+
+
+# --- Coin credit at-most-once gate ---------------------------------------
+
+def reserve_coin_credit_attempt(idempotency_key: str, user_id: str, booking_id: str,
+                                 amount: int, status: str) -> bool:
+    """Returns True if THIS call won the insert race and may fire the real
+    credit — False if an attempt with this idempotency_key already exists
+    (a concurrent or repeated credit_coins call), which must NOT fire.
+    Fails closed on a DB error: refusing to fire is always the safe choice
+    here, since firing twice against a no-idempotency API is the exact
+    failure mode this table exists to prevent."""
+    now = _now()
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO coin_credit_attempts
+                           (idempotency_key, user_id, booking_id, amount, status, created_at, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (idempotency_key) DO NOTHING""",
+                    (idempotency_key, user_id, booking_id, amount, status, now, now),
+                )
+                return cur.rowcount > 0
+    except psycopg2.Error:
+        logger.warning("reserve_coin_credit_attempt failed for key %s", idempotency_key, exc_info=True)
+        return False
+
+
+def finalize_coin_credit_attempt(idempotency_key: str, status: str, http_status: int = None,
+                                  response: str = None, error: str = None) -> None:
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE coin_credit_attempts
+                       SET status = %s, http_status = %s, response = %s, error = %s, updated_at = %s
+                       WHERE idempotency_key = %s""",
+                    (
+                        status, http_status,
+                        json.dumps({"body": response[:2000]}) if response else None,
+                        error, _now(), idempotency_key,
+                    ),
+                )
+    except psycopg2.Error:
+        logger.warning("finalize_coin_credit_attempt failed for key %s", idempotency_key, exc_info=True)
 
 
 # --- Analytics -----------------------------------------------------------

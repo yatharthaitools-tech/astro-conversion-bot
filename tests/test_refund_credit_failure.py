@@ -5,12 +5,23 @@ credit still got recorded via redash_client.record_credit(), which
 would have permanently blocked any retry for that booking even though
 no coins actually moved.
 """
+import pytest
 from unittest.mock import patch
 
 import requests
 
+from dashboard import db as dashboard_db
 from integrations import coin_credit_client, redash_client
 from services import refund_service
+
+
+@pytest.fixture(autouse=True)
+def _clean_db():
+    dashboard_db.init_db()
+    with dashboard_db._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE coin_credit_attempts")
+    yield
 
 
 def test_step1_credit_failure_reports_zero_and_does_not_poison_dedupe(monkeypatch):
