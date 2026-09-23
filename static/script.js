@@ -223,13 +223,13 @@ function sendToNativeHost(payload) {
 }
 
 // Generic native-action bridge — the contract the React Native side reads
-// on its WebView onMessage handler: {action: '<name>', ...params}. Every
-// new action this bot ever needs to trigger on the app is just another
-// call to this with its own action name/params, no new bridge mechanism
-// required. Still need the real action name for SHOW_FREE_COINS_BOTTOMSHEET
-// before that one migrates too.
+// on its WebView onMessage handler: {action: '<name>', payload: {...}}.
+// Every new action this bot ever needs to trigger on the app is just
+// another call to this with its own action name/params, no new bridge
+// mechanism required. Still need the real action name for
+// SHOW_FREE_COINS_BOTTOMSHEET before that one migrates too.
 function sendNativeAction(action, params = {}) {
-  return sendToNativeHost({ action, ...params });
+  return sendToNativeHost({ action, payload: params });
 }
 
 function triggerNativeConnect(mode, astrologer, isGeneric) {
