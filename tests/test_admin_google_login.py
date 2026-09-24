@@ -9,7 +9,7 @@ from dashboard import auth
 def configured(monkeypatch):
     monkeypatch.setattr(auth, 'GOOGLE_OAUTH_CLIENT_ID', 'client-123')
     monkeypatch.setattr(auth, 'ADMIN_ALLOWED_EMAILS', {'boss@gmail.com'})
-    monkeypatch.setattr(auth, 'ADMIN_ALLOWED_DOMAIN', 'astrolokal.com')
+    monkeypatch.setattr(auth, 'ADMIN_ALLOWED_DOMAINS', {'getlokalapp.com', 'astrolokal.com'})
 
 
 def _claims(**overrides):
@@ -30,6 +30,14 @@ def test_unconfigured_rejects_everything(monkeypatch):
 
 def test_workspace_domain_allowed(configured):
     assert _verify(_claims()) == 'someone@astrolokal.com'
+
+
+def test_second_workspace_domain_allowed(configured):
+    assert _verify(_claims(email='a@getlokalapp.com', hd='getlokalapp.com')) == 'a@getlokalapp.com'
+
+
+def test_other_workspace_domain_rejected(configured):
+    assert _verify(_claims(email='a@evil.com', hd='evil.com')) is None
 
 
 def test_allowlisted_email_allowed(configured):

@@ -3,9 +3,10 @@
 The login page renders Google's "Sign in with Google" button (Google
 Identity Services), which POSTs a signed ID token back to us. We verify
 that token against GOOGLE_OAUTH_CLIENT_ID and only let the email in if
-it's on the allowlist — ADMIN_ALLOWED_EMAILS (exact addresses) and/or
-ADMIN_ALLOWED_DOMAIN (a whole Google Workspace domain, checked against
-the token's `hd` claim so a personal gmail can't pass as the domain).
+it's on the allowlist — ADMIN_ALLOWED_DOMAINS (whole Google Workspace
+domains, default getlokalapp.com + astrolokal.com, checked against the
+token's `hd` claim so a personal gmail can't pass as the domain) and/or
+ADMIN_ALLOWED_EMAILS (exact extra addresses).
 No roles — anyone allowed in sees the whole dashboard.
 """
 import os
@@ -19,18 +20,22 @@ GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
 ADMIN_ALLOWED_EMAILS = {
     e.strip().lower() for e in os.environ.get('ADMIN_ALLOWED_EMAILS', '').split(',') if e.strip()
 }
-ADMIN_ALLOWED_DOMAIN = os.environ.get('ADMIN_ALLOWED_DOMAIN', '').strip().lower()
+ADMIN_ALLOWED_DOMAINS = {
+    d.strip().lower()
+    for d in os.environ.get('ADMIN_ALLOWED_DOMAINS', 'getlokalapp.com,astrolokal.com').split(',')
+    if d.strip()
+}
 
 
 def is_configured() -> bool:
-    return bool(GOOGLE_OAUTH_CLIENT_ID) and bool(ADMIN_ALLOWED_EMAILS or ADMIN_ALLOWED_DOMAIN)
+    return bool(GOOGLE_OAUTH_CLIENT_ID) and bool(ADMIN_ALLOWED_EMAILS or ADMIN_ALLOWED_DOMAINS)
 
 
 def is_allowed(email: str, hosted_domain: str) -> bool:
     email = (email or '').lower()
     if email in ADMIN_ALLOWED_EMAILS:
         return True
-    return bool(ADMIN_ALLOWED_DOMAIN) and (hosted_domain or '').lower() == ADMIN_ALLOWED_DOMAIN
+    return bool(hosted_domain) and hosted_domain.lower() in ADMIN_ALLOWED_DOMAINS
 
 
 def verify_google_credential(credential: str):

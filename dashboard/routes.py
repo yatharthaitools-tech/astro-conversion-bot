@@ -35,7 +35,7 @@ def login():
     error = None
     if not auth.is_configured():
         error = ('Google sign-in is not configured on the server — set GOOGLE_OAUTH_CLIENT_ID and '
-                 'ADMIN_ALLOWED_EMAILS or ADMIN_ALLOWED_DOMAIN. The dashboard is disabled until then.')
+                 'ADMIN_ALLOWED_DOMAINS or ADMIN_ALLOWED_EMAILS. The dashboard is disabled until then.')
     elif request.method == 'POST':
         # Google's button POSTs here with the ID token as `credential`, plus
         # the same g_csrf_token in both a cookie and the form body
