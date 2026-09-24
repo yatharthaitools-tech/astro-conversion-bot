@@ -4,6 +4,7 @@ const chatBody = document.getElementById('chatBody');
 const photoBtn = document.getElementById('photoBtn');
 const photoInput = document.getElementById('photoInput');
 const quickReplies = document.getElementById('quickReplies');
+const closeBtn = document.getElementById('closeBtn');
 
 const welcomeMessage = "Hi! I'm here to help you figure things out. What's been on your mind?";
 
@@ -392,6 +393,7 @@ function closeChat() {
     chatInput.placeholder = 'Chat ended';
     sendButton.disabled = true;
     photoBtn.disabled = true;
+    if (closeBtn) closeBtn.disabled = true;
     if (quickReplies) quickReplies.hidden = true;
   }
 }
@@ -488,7 +490,9 @@ function renderConnectCard(action) {
   callBtn.className = 'cc-btn cc-btn-call';
   callBtn.innerHTML = `${CC_ICONS.phone}<span>Call now</span>`;
 
-  [[chatBtn, 'chat'], [callBtn, 'call']].forEach(([btn, mode]) => {
+  // service_type sent to native is 'audio', not 'call' — matches the
+  // app's own naming for this call type.
+  [[chatBtn, 'chat'], [callBtn, 'audio']].forEach(([btn, mode]) => {
     btn.addEventListener('click', () => {
       chatBtn.disabled = true;
       callBtn.disabled = true;
@@ -508,6 +512,13 @@ sendButton.addEventListener('click', () => sendMessage());
 chatInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') sendMessage();
 });
+
+// The cross in the header — same close_chat action as the feedback
+// card's "Skip"/inactivity nudge's "Close it out", just reachable from
+// anywhere in the conversation, not only at the end of it. Native side
+// dismisses the WebView on close_chat, which drops back to its own home
+// screen — there's no separate "open home" action to send on top of it.
+if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
 
 photoBtn.addEventListener('click', () => photoInput.click());
 photoInput.addEventListener('change', () => {

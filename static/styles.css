@@ -56,7 +56,21 @@ button, input { font: inherit; }
   justify-content: center;
   flex-shrink: 0;
 }
-.chat-modal-title { min-width: 0; }
+.chat-modal-title { min-width: 0; flex: 1; }
+.close-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(42, 28, 20, 0.06);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.close-btn:hover { background: rgba(42, 28, 20, 0.12); }
 .title-main {
   font-weight: 700;
   font-size: 0.98rem;
