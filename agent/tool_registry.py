@@ -96,14 +96,25 @@ def _handle_trigger_recommend_astrologer(safe_input, ctx):
     # a named astrologer is actually busy/offline before it decides whether
     # notify_me_subscribe even applies. Never assume someone's unavailable
     # without this. next_available_at is a dummy 0-2h estimate for v1 (see
-    # recommend_flow_client._with_eta) — state it directly, then push
-    # connecting with someone else now (see the tool's own description).
-    return {
+    # recommend_flow_client._with_eta).
+    requested = action.get("requested_but_unavailable")
+    result = {
         "ok": True,
         "shown": astrologer["name"] if action["display_mode"] == "specific" else "best_match",
         "availability": astrologer["availability"],
         "next_available_at": astrologer["next_available_at"],
     }
+    if requested:
+        # The visitor named someone who turned out to be unavailable —
+        # the card ALREADY routes to a different, available astrologer
+        # (see recommend_flow_client.trigger's own docstring for why
+        # this is decided in code, not left for a second tool call).
+        # State both facts together: the named person's own status, and
+        # that the shown card connects to someone else instead.
+        result["requested_astrologer_name"] = requested["name"]
+        result["requested_astrologer_availability"] = requested["availability"]
+        result["requested_astrologer_next_available_at"] = requested["next_available_at"]
+    return result
 
 
 def _handle_notify_me_subscribe(safe_input, ctx):

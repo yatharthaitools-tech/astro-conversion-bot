@@ -141,19 +141,32 @@ def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:
     """Builds the connect_popup UI action. The card the visitor sees is
     always the same fixed design (rendered client-side as a component,
     not an image) — astrologer_id (when the visitor named someone and
-    search_astrologers resolved them) only
-    affects internal fields: real availability, and the id passed to the
-    native bridge so Connect still routes to that person. It's never
-    shown on the card. `concern` is accepted for the agent's own chat
-    text but no longer changes the card itself — there's no text left on
-    it to template, it's one fixed image."""
+    search_astrologers resolved them) only affects internal fields: real
+    availability, and the id passed to the native bridge so Connect
+    routes to that person. It's never shown on the card. `concern` is
+    accepted for the agent's own chat text but no longer changes the
+    card itself — there's no text left on it to template, it's one
+    fixed image.
+
+    If the named astrologer isn't actually available, the card falls
+    back to whoever IS (never routes "Connect now" to someone offline —
+    that would just fail on the native side) — this is deliberately
+    decided HERE, not left to the model to notice and re-call with a
+    second trigger_recommend_astrologer for the fallback, since that
+    reliably didn't happen in practice (verified live: 3/3 runs stated
+    the offline person's ETA correctly in text but kept the card
+    pointed at them anyway). requested_but_unavailable carries the
+    originally-named person's own info so the caller can still state
+    their status/ETA truthfully alongside the fallback card."""
     label = CONNECT_LABELS.get(lang, CONNECT_LABELS["en"])
     named = get_astrologer(astrologer_id) if astrologer_id else None
-    astrologer = named or pick_best_match()
+    named_unavailable = named is not None and named["availability"] != "Available now"
+    astrologer = pick_best_match() if named_unavailable else (named or pick_best_match())
 
     return {
         "type": "connect_popup",
-        "display_mode": "specific" if named else "general",
+        "display_mode": "general" if named_unavailable else ("specific" if named else "general"),
         "label": label,
         "astrologer": astrologer,
+        "requested_but_unavailable": named if named_unavailable else None,
     }
