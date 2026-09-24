@@ -94,6 +94,7 @@ h2 { font-size: 0.95rem; margin: 0 0 10px; color: rgba(42, 28, 20, 0.7); }
   cursor: pointer;
   font: inherit;
 }
+.login-google { display: flex; justify-content: center; }
 .login-error { color: #c0392b; font-size: 0.85rem; }
 
 /* --- Filters / tables --- */
