@@ -9,9 +9,10 @@ load_dotenv()
 
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
-from integrations import recommend_flow_client, s3_client
+from integrations import free_coins_client, recommend_flow_client, s3_client
 from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
+from services import refund_service
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
@@ -381,6 +382,38 @@ def ask():
         'action': ctx.ui_action,
         'show_feedback': ctx.show_feedback,
     })
+
+
+@app.route('/session-end', methods=['POST'])
+def session_end():
+    """Called by the widget once, however the chat ends. Credits free coins
+    sized by the visitor's real LTV tier (refund_service.decide_session_end
+    — at most once per user per day) and hands back the free-coins sheet.
+    Only for a real app user (user_id + oauth_token handed off by the
+    app) whose session actually has a chat on record — a plain-browser
+    visitor's pseudo-id, or a bare call with no conversation behind it,
+    never gets coins."""
+    payload = request.get_json(silent=True) or {}
+    session_id = str(payload.get('session_id') or '').strip()
+    if not session_id:
+        return jsonify({'ok': False, 'error': 'session_id is required'}), 400
+
+    ctx = agent_context.resolve_session(payload, session_id, 'en', [])
+    if not ctx.oauth_token or not dashboard_db.session_has_chat(session_id, ctx.user_id):
+        return jsonify({'ok': True, 'coins': 0, 'action': None})
+
+    result = refund_service.decide_session_end(ctx.user_id)
+    coins = result['total_coins']
+    s3_client.log_event({
+        'session_id': session_id,
+        'user_id': ctx.user_id,
+        'event': 'session_end_coins',
+        'tier': result['tier'],
+        'coins': coins,
+        'reason_code': result['reason_code'],
+    })
+    action = free_coins_client.build_bottomsheet(coins, result['credit_id']) if coins > 0 else None
+    return jsonify({'ok': True, 'coins': coins, 'action': action})
 
 
 @app.route('/feedback', methods=['POST'])

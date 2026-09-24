@@ -11,14 +11,17 @@ AstroHelp's integrations/.
 Deterministic per-user (hash of user_id), not random — same user always
 gets the same mock data, stable across a demo/test session.
 
-get_astrologer_availability() is the one exception — a REAL Redash query
-(id 20369 by default), not mocked. It needs REDASH_AVAILABILITY_API_KEY
-set; without it, callers get None back and should fall back to whatever
-mocked availability they already have.
+Two exceptions are REAL Redash queries, not mocked:
+- get_astrologer_availability() (id 20369 by default) — needs
+  REDASH_AVAILABILITY_API_KEY; without it, callers get None back and fall
+  back to whatever mocked availability they already have.
+- get_lifetime_spend() / get_ltv_tier() — needs REDASH_LTV_QUERY_ID +
+  REDASH_LTV_API_KEY (see get_lifetime_spend for the fallback).
 """
 import hashlib
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -33,7 +36,7 @@ def _seed(user_id: str, salt: str) -> int:
     return int(hashlib.sha256(f"{user_id}:{salt}".encode()).hexdigest(), 16)
 
 
-def get_lifetime_spend(user_id: str) -> int:
+def _mock_lifetime_spend(user_id: str) -> int:
     """Total ₹ ever spent by this user. ~20% land at 0 (New/Unpaid) by design."""
     bucket = _seed(user_id, "spend") % 100
     if bucket < 20:
@@ -45,9 +48,75 @@ def get_lifetime_spend(user_id: str) -> int:
     return 1000 + (_seed(user_id, "spend4") % 4000)  # High: 1000-5000
 
 
+# How long to wait for a parameterized Redash run that isn't cached yet.
+_LTV_JOB_TIMEOUT_S = 8
+_LTV_JOB_POLL_S = 0.5
+
+
+def _real_lifetime_spend(user_id: str, api_key: str, query_id: str):
+    """REAL query — lifetime ₹ spend for one user, from the Redash query
+    REDASH_LTV_QUERY_ID. The query must take a `user_id` parameter and
+    return a `lifetime_spend` column; no row means the user has never
+    paid (0). Returns None if the call fails, so callers can fall back.
+
+    A parameterized query goes through POST .../results: Redash answers
+    with the result straight away when it's cached, otherwise with a job
+    to poll until the fresh result is ready.
+    """
+    headers = {"Authorization": f"Key {api_key}"}
+    base = _REDASH_BASE_URL.rsplit("/queries", 1)[0]
+    try:
+        response = requests.post(
+            f"{_REDASH_BASE_URL}/{query_id}/results",
+            json={"parameters": {"user_id": str(user_id)}, "max_age": 3600},
+            headers=headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+        body = response.json()
+        deadline = time.monotonic() + _LTV_JOB_TIMEOUT_S
+        while "query_result" not in body:
+            job = body["job"]
+            if job.get("status") == 3:  # success
+                response = requests.get(
+                    f"{base}/query_results/{job['query_result_id']}.json", headers=headers, timeout=10,
+                )
+                response.raise_for_status()
+                body = response.json()
+                break
+            if job.get("status") in (4, 5) or time.monotonic() > deadline:  # failed/cancelled/too slow
+                raise ValueError(f"job {job.get('id')} status {job.get('status')}: {job.get('error')}")
+            time.sleep(_LTV_JOB_POLL_S)
+            response = requests.get(f"{base}/jobs/{job['id']}", headers=headers, timeout=10)
+            response.raise_for_status()
+            body = response.json()
+        rows = body["query_result"]["data"]["rows"]
+        return float(rows[0].get("lifetime_spend") or 0) if rows else 0
+    except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
+        logger.warning("Redash LTV query %s failed for user %s: %s", query_id, user_id, exc)
+        return None
+
+
+def get_lifetime_spend(user_id: str):
+    """Real spend when REDASH_LTV_QUERY_ID + REDASH_LTV_API_KEY are set.
+    Otherwise the hash-based mock — but only while coin credits are mocked
+    too: with real credits on (COIN_CREDIT_API_AUTH), a fake tier would
+    size real coins, so this returns None ("unknown") instead."""
+    api_key = os.environ.get("REDASH_LTV_API_KEY")
+    query_id = os.environ.get("REDASH_LTV_QUERY_ID")
+    if api_key and query_id:
+        return _real_lifetime_spend(user_id, api_key, query_id)
+    if os.environ.get("COIN_CREDIT_API_AUTH"):
+        logger.warning("LTV query not configured while real coin credits are on — tier unknown")
+        return None
+    return _mock_lifetime_spend(user_id)
+
+
 def get_ltv_tier(user_id: str) -> str:
+    """Unknown spend (query failed / not configured with live credits)
+    comes back as new_unpaid — the tier that never gets bonus coins."""
     spend = get_lifetime_spend(user_id)
-    if spend == 0:
+    if not spend:
         return "new_unpaid"
     if spend <= 200:
         return "new_low"

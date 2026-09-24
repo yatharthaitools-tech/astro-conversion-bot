@@ -303,6 +303,24 @@ def count_conversations(language: str = None, date_from: str = None, date_to: st
             return cur.fetchone()['n']
 
 
+def session_has_chat(session_id: str, user_id: str) -> bool:
+    """True only if this session is on record for this user with at least
+    one real turn — gates session-end coins behind an actual chat. Fails
+    closed (False) if the DB can't be reached."""
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT turn_count FROM conversations WHERE session_id = %s AND user_id = %s",
+                    (session_id, user_id),
+                )
+                row = cur.fetchone()
+                return bool(row) and row['turn_count'] >= 1
+    except psycopg2.Error:
+        logger.warning("session_has_chat failed for session %s", session_id, exc_info=True)
+        return False
+
+
 def get_conversation(session_id: str) -> dict:
     with _connect() as conn:
         with conn.cursor() as cur:

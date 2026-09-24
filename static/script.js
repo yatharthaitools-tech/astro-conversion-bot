@@ -25,6 +25,7 @@ let hasStartedConversation = false;
 // astrologer connect, the ending just shows the connect card.
 let sessionEnded = false;
 let ratingAsked = false;
+let sessionCoinsClaimed = false;
 let lastConnectAction = null;
 const GENERIC_CONNECT_ACTION = { type: 'connect_popup', display_mode: 'general', astrologer: {} };
 
@@ -317,7 +318,7 @@ function showInactivityNudge() {
 // A quick in-chat confirmation that coins actually landed — easy to
 // miss as just a line of reply text, so this gives it its own visual
 // moment alongside the native bottomsheet.
-function showCoinsCreditedCard(freeCoins) {
+function showCoinsCreditedCard(freeCoins, beforeEl) {
   const card = document.createElement('div');
   card.className = 'message bot coins-card';
 
@@ -326,8 +327,37 @@ function showCoinsCreditedCard(freeCoins) {
   label.textContent = `🎉 ${freeCoins.coins} free coins added!`;
   card.appendChild(label);
 
-  chatBody.appendChild(card);
+  if (beforeEl && beforeEl.isConnected) {
+    chatBody.insertBefore(card, beforeEl);
+  } else {
+    chatBody.appendChild(card);
+  }
   chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+// Free coins for ending a session — the server sizes them from the
+// visitor's real LTV tier and credits at most once per user per day (see
+// app.py's /session-end); an ineligible/already-credited visitor just gets
+// nothing back. Asked once per page; best-effort, never blocks the ending.
+// The coins card goes in just above `beforeEl` (the closing connect or
+// rating card) so it reads as part of the same ending.
+async function claimSessionEndCoins(beforeEl) {
+  if (sessionCoinsClaimed || !hasStartedConversation) return;
+  sessionCoinsClaimed = true;
+  try {
+    const response = await fetch('/session-end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: getSessionId(), user_id: appUserId, oauth_token: appOauthToken }),
+    });
+    const data = await response.json();
+    if (data.action && data.action.type === 'free_coins_bottomsheet') {
+      sendToNativeHost({ type: 'SHOW_FREE_COINS_BOTTOMSHEET', freeCoins: data.action.freeCoins });
+      showCoinsCreditedCard(data.action.freeCoins, beforeEl);
+    }
+  } catch (error) {
+    // Best-effort — no coins shown is better than a broken ending.
+  }
 }
 
 // However the session ends — issue resolved, visitor closed it out, or
@@ -339,8 +369,9 @@ function endSession() {
   if (sessionEnded) return;
   sessionEnded = true;
   clearInactivityTimer();
-  renderConnectCard(lastConnectAction || GENERIC_CONNECT_ACTION);
+  const connectCard = renderConnectCard(lastConnectAction || GENERIC_CONNECT_ACTION);
   turnsSinceLastCard = 0;
+  claimSessionEndCoins(connectCard);
   if (ratingAsked) {
     lockChat();
   } else {
@@ -396,6 +427,7 @@ function showFeedbackPrompt(onDone) {
 
   chatBody.appendChild(card);
   chatBody.scrollTop = chatBody.scrollHeight;
+  return card;
 }
 
 function fillStars(starEls, upTo) {
@@ -450,7 +482,7 @@ const CC_ICONS = {
 
 function renderConnectCard(action) {
   const astrologer = action.astrologer;
-  if (!astrologer) return;
+  if (!astrologer) return null;
   const isGeneric = action.display_mode !== 'specific';
 
   const card = document.createElement('div');
@@ -533,7 +565,8 @@ function renderConnectCard(action) {
         triggerNativeConnect(mode, astrologer, isGeneric);
       } else {
         clearInactivityTimer();
-        showFeedbackPrompt(() => triggerNativeConnect(mode, astrologer, isGeneric));
+        const ratingCard = showFeedbackPrompt(() => triggerNativeConnect(mode, astrologer, isGeneric));
+        claimSessionEndCoins(ratingCard);
       }
     });
   });
@@ -544,6 +577,7 @@ function renderConnectCard(action) {
 
   chatBody.appendChild(card);
   chatBody.scrollTop = chatBody.scrollHeight;
+  return card;
 }
 
 sendButton.addEventListener('click', () => sendMessage());

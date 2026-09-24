@@ -44,9 +44,9 @@ The idempotency key scope differs from daily-cast's own (which is
 "once per user per day" — their product's actual redemption rule):
 here it's `{user_id}:{booking_id}` for booking-scoped credits (matching
 this app's existing dedupe check's own scope), or
-`{user_id}:retention:{today}` for retention gestures (no booking_id) —
-a default, not yet confirmed as astro-conversion-bot's real retention
-cadence.
+`{user_id}:{reason}:{today}` for credits with no booking_id (retention
+gestures, session-end coins) — once per user per day for each kind, a
+default not yet confirmed as astro-conversion-bot's real cadence.
 
 UNCONFIRMED, flagged for whoever runs the first live test:
   - success/failure response shape — currently just "2xx status code",
@@ -73,10 +73,12 @@ def _as_user_id(user_id: str):
     return int(user_id) if str(user_id).isdigit() else user_id
 
 
-def _idempotency_key(user_id: str, booking_id: str) -> str:
+def _idempotency_key(user_id: str, booking_id: str, reason: str) -> str:
     if booking_id:
         return f"{user_id}:{booking_id}"
-    return f"{user_id}:retention:{date.today().isoformat()}"
+    # No booking: once per user per day per kind — "retention" and
+    # "session_end" each get their own daily slot.
+    return f"{user_id}:{reason}:{date.today().isoformat()}"
 
 
 def credit(user_id: str, booking_id: str, amount: int, reason: str) -> dict:
@@ -85,7 +87,7 @@ def credit(user_id: str, booking_id: str, amount: int, reason: str) -> dict:
     if not isinstance(amount, int) or amount <= 0:
         raise ValueError("coin_credit_client.credit: amount must be a positive integer")
 
-    idempotency_key = _idempotency_key(user_id, booking_id)
+    idempotency_key = _idempotency_key(user_id, booking_id, reason)
     live = bool(COIN_CREDIT_API_AUTH)
 
     won = dashboard_db.reserve_coin_credit_attempt(

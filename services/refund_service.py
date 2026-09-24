@@ -199,3 +199,22 @@ def decide_retention(user_id: str) -> dict:
         return {"tier": tier, "total_coins": 0, "credit_id": None, "reason_code": "retention_credit_failed"}
     redash_client.record_credit(user_id, None, "retention", amount)
     return {"tier": tier, "total_coins": amount, "credit_id": result["credit_id"], "reason_code": "retention_gesture"}
+
+
+# Free coins when a chat session ends (resolved, closed out, gone quiet, or
+# heading into an astrologer connect) — flat by LTV tier, at most once per
+# user per day (coin_credit_client's `{user}:session_end:{today}` key).
+# Same amounts as the retention gesture above; new/unpaid users get none.
+_SESSION_END_AMOUNT = {"new_unpaid": 0, "new_low": 20, "mid": 35, "high": 50}
+
+
+def decide_session_end(user_id: str) -> dict:
+    tier = redash_client.get_ltv_tier(user_id)
+    amount = _SESSION_END_AMOUNT[tier]
+    if amount <= 0:
+        return {"tier": tier, "total_coins": 0, "credit_id": None, "reason_code": "new_unpaid_ineligible"}
+    result = coin_credit_client.credit(user_id, None, amount, "session_end")
+    if not result["success"]:
+        # Also the "already got today's session-end coins" case.
+        return {"tier": tier, "total_coins": 0, "credit_id": None, "reason_code": "session_end_not_credited"}
+    return {"tier": tier, "total_coins": amount, "credit_id": result["credit_id"], "reason_code": "session_end_coins"}
