@@ -2,23 +2,11 @@
 {% block title %}Admin Login — AstroLokal{% endblock %}
 {% block bare_content %}
 <div class="login-page">
-  <div class="login-card">
+  <form method="post" class="login-card">
     <div class="login-brand">AstroLokal <span>Admin</span></div>
     {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
-    {% if configured %}
-      <script src="https://accounts.google.com/gsi/client" async></script>
-      <div id="g_id_onload"
-           data-client_id="{{ google_client_id }}"
-           data-login_uri="{{ url_for('dashboard.login', _external=True) }}"
-           data-ux_mode="popup"
-           data-auto_prompt="false"></div>
-      <div class="g_id_signin login-google"
-           data-type="standard"
-           data-theme="outline"
-           data-size="large"
-           data-text="signin_with"
-           data-shape="rectangular"></div>
-    {% endif %}
-  </div>
+    <input type="password" name="password" placeholder="Admin password" autofocus required class="login-input" />
+    <button type="submit" class="login-btn">Log in</button>
+  </form>
 </div>
 {% endblock %}

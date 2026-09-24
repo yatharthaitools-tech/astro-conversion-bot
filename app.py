@@ -3,7 +3,6 @@ import re
 import uuid
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, url_for
-from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
 load_dotenv()
@@ -21,10 +20,6 @@ app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
 # per-process random key (dev-only behavior: sessions won't survive a
 # restart) rather than refusing to start when ADMIN_SESSION_SECRET isn't set.
 app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or os.urandom(32)
-# Deployed behind a TLS-terminating proxy — trust its X-Forwarded-Proto/Host
-# so absolute URLs (the Google sign-in button's login_uri) come out as
-# https://<public host> rather than the internal http address.
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.register_blueprint(dashboard_bp)
 dashboard_db.init_db()
 
