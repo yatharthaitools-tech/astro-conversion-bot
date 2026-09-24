@@ -33,15 +33,25 @@ def login():
         return redirect(url_for('dashboard.conversations'))
 
     error = None
-    if request.method == 'POST':
-        if not auth.is_configured():
-            error = 'ADMIN_PASSWORD is not set on the server — the dashboard is disabled until it is.'
-        elif auth.check_password(request.form.get('password', '')):
-            auth.log_in()
-            return redirect(url_for('dashboard.conversations'))
+    if not auth.is_configured():
+        error = ('Google sign-in is not configured on the server — set GOOGLE_OAUTH_CLIENT_ID and '
+                 'ADMIN_ALLOWED_DOMAINS or ADMIN_ALLOWED_EMAILS. The dashboard is disabled until then.')
+    elif request.method == 'POST':
+        # Google's button POSTs here with the ID token as `credential`, plus
+        # the same g_csrf_token in both a cookie and the form body
+        # (double-submit CSRF check, per Google's docs).
+        csrf_cookie = request.cookies.get('g_csrf_token')
+        if not csrf_cookie or csrf_cookie != request.form.get('g_csrf_token'):
+            error = 'Sign-in failed (CSRF check). Please try again.'
         else:
-            error = 'Wrong password.'
-    return render_template('login.html', error=error)
+            email = auth.verify_google_credential(request.form.get('credential', ''))
+            if email:
+                auth.log_in(email)
+                return redirect(url_for('dashboard.conversations'))
+            error = 'That Google account is not allowed to access the admin dashboard.'
+    return render_template('login.html', error=error,
+                           google_client_id=auth.GOOGLE_OAUTH_CLIENT_ID,
+                           configured=auth.is_configured())
 
 
 @bp.route('/logout', methods=['POST'])

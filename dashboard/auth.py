@@ -1,38 +1,76 @@
-"""Single shared-password admin login, via a Flask session cookie.
+"""Google sign-in for the admin dashboard, via a Flask session cookie.
 
-Deliberately lightweight — this dashboard has one operator, not a team
-with per-person accounts/roles like astrohelp's admin-app (JWT + bcrypt +
-KAM/CS roles). A shared password behind a signed session cookie is enough
-to keep the dashboard from being wide open; upgrade to real per-admin
-accounts if/when more than one person needs access with different
-permissions.
+The login page renders Google's "Sign in with Google" button (Google
+Identity Services), which POSTs a signed ID token back to us. We verify
+that token against GOOGLE_OAUTH_CLIENT_ID and only let the email in if
+it's on the allowlist — ADMIN_ALLOWED_DOMAINS (whole Google Workspace
+domains, default getlokalapp.com + astrolokal.com, checked against the
+token's `hd` claim so a personal gmail can't pass as the domain) and/or
+ADMIN_ALLOWED_EMAILS (exact extra addresses).
+No roles — anyone allowed in sees the whole dashboard.
 """
 import os
 from functools import wraps
 
 from flask import redirect, session, url_for
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2 import id_token
 
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+ADMIN_ALLOWED_EMAILS = {
+    e.strip().lower() for e in os.environ.get('ADMIN_ALLOWED_EMAILS', '').split(',') if e.strip()
+}
+ADMIN_ALLOWED_DOMAINS = {
+    d.strip().lower()
+    for d in os.environ.get('ADMIN_ALLOWED_DOMAINS', 'getlokalapp.com,astrolokal.com').split(',')
+    if d.strip()
+}
 
 
 def is_configured() -> bool:
-    return bool(ADMIN_PASSWORD)
+    return bool(GOOGLE_OAUTH_CLIENT_ID) and bool(ADMIN_ALLOWED_EMAILS or ADMIN_ALLOWED_DOMAINS)
 
 
-def check_password(candidate: str) -> bool:
-    return is_configured() and candidate == ADMIN_PASSWORD
+def is_allowed(email: str, hosted_domain: str) -> bool:
+    email = (email or '').lower()
+    if email in ADMIN_ALLOWED_EMAILS:
+        return True
+    return bool(hosted_domain) and hosted_domain.lower() in ADMIN_ALLOWED_DOMAINS
+
+
+def verify_google_credential(credential: str):
+    """Returns the verified email if the ID token is valid and the account
+    is allowed in, else None. Signature, audience, issuer and expiry are
+    all checked by verify_oauth2_token."""
+    if not is_configured() or not credential:
+        return None
+    try:
+        claims = id_token.verify_oauth2_token(credential, GoogleAuthRequest(), GOOGLE_OAUTH_CLIENT_ID)
+    except ValueError:
+        return None
+    if not claims.get('email_verified'):
+        return None
+    email = claims.get('email', '')
+    if not is_allowed(email, claims.get('hd', '')):
+        return None
+    return email
 
 
 def is_logged_in() -> bool:
-    return session.get('is_admin') is True
+    return bool(session.get('admin_email'))
 
 
-def log_in() -> None:
-    session['is_admin'] = True
+def current_admin_email() -> str:
+    return session.get('admin_email', '')
+
+
+def log_in(email: str) -> None:
+    session.clear()
+    session['admin_email'] = email
 
 
 def log_out() -> None:
-    session.pop('is_admin', None)
+    session.pop('admin_email', None)
 
 
 def admin_required(view):
