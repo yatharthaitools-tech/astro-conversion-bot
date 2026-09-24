@@ -6,6 +6,9 @@ actually delivered. Keep this separate from decide(): one is "did the
 astrologer even show up" (a fast, narrow factual check with no LTV
 involved at all), the other is the full "Refund & Bonus Logic" SOP.
 """
+import uuid
+
+from dashboard import db as dashboard_db
 from integrations import coin_credit_client, redash_client
 
 AUTO_REFUND_MAX_DURATION_SECONDS = 30
@@ -41,7 +44,66 @@ def check_eligibility(user_id: str, booking_id: str) -> dict:
     }
 
 
+# --- v1 refund: LTV tier + daily cap, no booking validation -------------
+#
+# Replaces the 4-step SOP below for now: no get_booking_details call, no
+# issue_tag classification, no Redash query of any kind — LTV arrives
+# with the session itself (agent/context.py's SessionContext.ltv, set
+# from the app's own user_name/ltv session params). A flat amount per
+# tier, capped at N refunds/day per tier, tracked in our own
+# coin_credit_attempts table (see dashboard.db.count_successful_credits_today)
+# rather than a Redash-backed dedupe/monthly-count check.
+
+_V1_REFUND_TIERS = (
+    # (ltv_lower_inclusive, ltv_upper_exclusive, daily_cap, flat_amount)
+    (0, 200, 1, 50),
+    (200, 1000, 2, 100),
+    (1000, float("inf"), 3, 150),
+)
+
+
+def _v1_tier(ltv: float) -> tuple:
+    for lower, upper, cap, amount in _V1_REFUND_TIERS:
+        if lower <= ltv < upper:
+            return cap, amount
+    # ltv < 0 (shouldn't happen) falls through to the lowest tier rather
+    # than raising — never let a weird input value block a refund path.
+    return _V1_REFUND_TIERS[0][2], _V1_REFUND_TIERS[0][3]
+
+
+def decide_v1_refund(user_id: str, ltv, reason: str) -> dict:
+    """The only refund decision credit_coins makes right now when
+    booking_id is set. No fact-checking against what actually happened —
+    trusts the visitor's claim entirely, gated only by how many they've
+    already gotten today for their LTV tier."""
+    if ltv is None:
+        return {"total_coins": 0, "credit_id": None, "reason_code": "ltv_unknown"}
+
+    cap, amount = _v1_tier(float(ltv))
+    used_today = dashboard_db.count_successful_credits_today(user_id, "refund_v1")
+    if used_today >= cap:
+        return {"total_coins": 0, "credit_id": None, "reason_code": "daily_cap_reached",
+                "daily_cap": cap, "used_today": used_today}
+
+    # A synthetic per-attempt reference (not a real booking_id) so the
+    # idempotency gate in coin_credit_client treats each refund as its
+    # own attempt — this cap, not that gate, is what limits how many a
+    # visitor can get in a day.
+    attempt_ref = f"v1refund-{uuid.uuid4().hex[:10]}"
+    result = coin_credit_client.credit(user_id, attempt_ref, amount, "refund_v1")
+    if not result["success"]:
+        return {"total_coins": 0, "credit_id": None, "reason_code": "credit_failed",
+                "daily_cap": cap, "used_today": used_today}
+
+    return {"total_coins": amount, "credit_id": result["credit_id"], "reason_code": "refund_v1_credited",
+            "daily_cap": cap, "used_today": used_today + 1}
+
+
 # --- "Refund & Bonus Logic — One Page" SOP -----------------------------
+#
+# NOT currently wired into credit_coins — decide_v1_refund() above is
+# what actually runs for now. Kept here for a possible v2 (real booking
+# validation via Redash), not deleted.
 #
 # Facts decide the refund. LTV only decides the size of the "thank you
 # for your patience" on top. Steps are evaluated in order, first match

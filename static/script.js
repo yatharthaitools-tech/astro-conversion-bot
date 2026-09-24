@@ -40,6 +40,8 @@ function clearInactivityTimer() {
 // own session-derived pseudo-id.
 const appUserId = document.body.dataset.userId || '';
 const appOauthToken = document.body.dataset.oauthToken || '';
+const appUserName = document.body.dataset.userName || '';
+const appLtv = document.body.dataset.ltv || '';
 
 function getSessionId() {
   let sessionId = sessionStorage.getItem('astro_session_id');
@@ -110,6 +112,8 @@ async function sendToBot(text) {
           history: history.slice(0, -1),
           user_id: appUserId,
           oauth_token: appOauthToken,
+          user_name: appUserName,
+          ltv: appLtv,
         })
       }),
       minDelay

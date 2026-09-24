@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS coin_credit_attempts (
     user_id TEXT NOT NULL,
     booking_id TEXT,
     amount INTEGER NOT NULL,
+    purpose TEXT,
     status TEXT NOT NULL,
     http_status INTEGER,
     response JSONB,
@@ -144,6 +145,7 @@ _MIGRATIONS = [
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS rating INTEGER",
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS rated_at TIMESTAMPTZ",
     "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS zoho_ticket_id TEXT",
+    "ALTER TABLE coin_credit_attempts ADD COLUMN IF NOT EXISTS purpose TEXT",
 ]
 
 
@@ -447,28 +449,54 @@ def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
 # --- Coin credit at-most-once gate ---------------------------------------
 
 def reserve_coin_credit_attempt(idempotency_key: str, user_id: str, booking_id: str,
-                                 amount: int, status: str) -> bool:
+                                 amount: int, status: str, purpose: str = None) -> bool:
     """Returns True if THIS call won the insert race and may fire the real
     credit — False if an attempt with this idempotency_key already exists
     (a concurrent or repeated credit_coins call), which must NOT fire.
     Fails closed on a DB error: refusing to fire is always the safe choice
     here, since firing twice against a no-idempotency API is the exact
-    failure mode this table exists to prevent."""
+    failure mode this table exists to prevent. `purpose` is the caller's
+    own reason string (e.g. "refund_v1", "retention") — stored so
+    count_successful_credits_today() can scope its count to one purpose
+    at a time, rather than lumping every kind of credit into one cap."""
     now = _now()
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO coin_credit_attempts
-                           (idempotency_key, user_id, booking_id, amount, status, created_at, updated_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)
+                           (idempotency_key, user_id, booking_id, amount, purpose, status, created_at, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (idempotency_key) DO NOTHING""",
-                    (idempotency_key, user_id, booking_id, amount, status, now, now),
+                    (idempotency_key, user_id, booking_id, amount, purpose, status, now, now),
                 )
                 return cur.rowcount > 0
     except psycopg2.Error:
         logger.warning("reserve_coin_credit_attempt failed for key %s", idempotency_key, exc_info=True)
         return False
+
+
+def count_successful_credits_today(user_id: str, purpose: str) -> int:
+    """How many successful (or stub-credited, in mock mode) credits of
+    this purpose this user already has today (server-local calendar day)
+    — the daily-cap check for services/refund_service.py's
+    decide_v1_refund(). Fails closed: on a DB error, returns a value
+    guaranteed to be >= any real cap, so the caller denies rather than
+    risks over-crediting when it can't actually check."""
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT COUNT(*) AS n FROM coin_credit_attempts
+                       WHERE user_id = %s AND purpose = %s
+                         AND status IN ('success', 'stub_credited')
+                         AND created_at >= date_trunc('day', now())""",
+                    (user_id, purpose),
+                )
+                return cur.fetchone()['n']
+    except psycopg2.Error:
+        logger.warning("count_successful_credits_today failed for user %s", user_id, exc_info=True)
+        return 10**9
 
 
 def finalize_coin_credit_attempt(idempotency_key: str, status: str, http_status: int = None,

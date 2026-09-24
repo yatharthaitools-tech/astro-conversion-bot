@@ -90,6 +90,7 @@ def credit(user_id: str, booking_id: str, amount: int, reason: str) -> dict:
 
     won = dashboard_db.reserve_coin_credit_attempt(
         idempotency_key, user_id, booking_id, amount, "firing" if live else "stub_credited",
+        purpose=reason,
     )
     if not won:
         logger.info("coin_credit_client: duplicate suppressed for key=%s", idempotency_key)

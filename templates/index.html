@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
-  <body data-user-id="{{ user_id }}" data-oauth-token="{{ oauth_token }}">
+  <body data-user-id="{{ user_id }}" data-oauth-token="{{ oauth_token }}" data-user-name="{{ user_name }}" data-ltv="{{ ltv }}">
     <div class="chat-modal" role="dialog" aria-label="Chat with AstroLokal">
       <div class="chat-modal-header">
         <div class="brand-mark" aria-hidden="true">

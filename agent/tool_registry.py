@@ -25,14 +25,6 @@ from integrations import (
 from services import ltv_service, refund_service, ticket_service
 
 
-_ISSUE_TAG_TO_TICKET_CATEGORY = {
-    "astrologer_not_helpful": "quality_complaint",
-    "poor_prediction_quality": "quality_complaint",
-    "scam_or_trust_complaint": "report",
-    "blank_screen_unconfirmed": "technical",
-}
-
-
 def _handle_get_payment_status(safe_input, ctx):
     return redash_client.get_payment_status(ctx.user_id)
 
@@ -54,7 +46,6 @@ def _handle_get_ltv_tier(safe_input, ctx):
 
 def _handle_credit_coins(safe_input, ctx):
     booking_id = safe_input.get("booking_id")  # omitted = no-booking retention gesture
-    issue_tag = safe_input.get("issue_tag")
     reason = safe_input.get("reason")
     if not reason:
         return {"error": "reason is required"}
@@ -62,16 +53,9 @@ def _handle_credit_coins(safe_input, ctx):
     if not booking_id:
         result = refund_service.decide_retention(ctx.user_id)
     else:
-        if not issue_tag:
-            return {"error": "issue_tag is required when booking_id is set"}
-        result = refund_service.decide(ctx.user_id, booking_id, issue_tag, reason)
-        if result.get("route_to_ticket"):
-            severe = result.get("reason_code") == "severe_language_no_bonus"
-            category = _ISSUE_TAG_TO_TICKET_CATEGORY.get(issue_tag, "escalation" if severe else "quality_complaint")
-            ticket_service.create_ticket(
-                ctx.user_id, category, issue_tag or "escalation", reason,
-                evidence_url=ctx.last_attachment_url, session_id=ctx.session_id,
-            )
+        # v1: LTV-tier + daily-cap only, no booking validation — see
+        # services/refund_service.py's decide_v1_refund() docstring.
+        result = refund_service.decide_v1_refund(ctx.user_id, ctx.ltv, reason)
 
     total_coins = result.get("total_coins", 0)
     if total_coins > 0:
@@ -89,14 +73,11 @@ def _handle_credit_coins(safe_input, ctx):
         ctx.ui_action = bottomsheet
 
     return {
-        "step": result.get("step"),
-        "refund_coins": result.get("refund_coins", 0),
-        "bonus_coins": result.get("bonus_coins", 0),
         "total_coins": total_coins,
-        "tier": result.get("tier"),
         "reason_code": result.get("reason_code"),
-        "escalated_to_ticket": result.get("route_to_ticket", False),
-        "mandatory_human_followup": result.get("mandatory_human_followup", False),
+        "tier": result.get("tier"),
+        "daily_cap": result.get("daily_cap"),
+        "used_today": result.get("used_today"),
     }
 
 

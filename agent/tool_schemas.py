@@ -85,26 +85,18 @@ GET_LTV_TIER = {
 CREDIT_COINS = {
     "name": "credit_coins",
     "description": (
-        "Requests a coin credit for a specific booking, following the "
-        "real Refund & Bonus Logic SOP: facts decide WHETHER/HOW MUCH "
-        "gets refunded (issue_tag below), LTV only sizes the small bonus "
-        "on top — you never set or influence the amount, there is no "
-        "amount field. Pick the issue_tag that matches what actually "
-        "happened (fetch get_booking_details first if you're not sure) — "
-        "astrologer-fault tags always refund in full regardless of tier; "
-        "user-fault tags never refund; partial-fault tags refund unused "
-        "coins plus a tier-sized bonus; the no-clear-signal tags "
-        "automatically escalate to a support ticket (this tool creates it "
-        "for you in that case — don't also call create_support_ticket "
-        "yourself for the same complaint). Also use a no-clear-signal tag "
-        "for a legal threat or fraud accusation — that path always "
-        "skips any bonus and goes straight to a ticket, offering coins "
-        "there reads as admitting fault. Fails cleanly if this exact "
-        "booking already has a credit on record — never retry with the "
-        "same booking_id expecting a different result. For a visitor "
-        "saying the app/service is too expensive and considering leaving "
-        "with NO specific booking in dispute, omit booking_id entirely — "
-        "that's a separate small retention gesture, not this SOP."
+        "Requests a coin credit for a specific booking the visitor is "
+        "unhappy about (v1: their claim is trusted at face value — no "
+        "booking facts are checked). You never set or influence the "
+        "amount, there is no amount field — it's a flat amount sized by "
+        "the visitor's LTV tier, capped at a small number of refunds per "
+        "day for that tier. If they've hit today's cap, this tells you "
+        "so (say so plainly, don't imply anything is wrong with their "
+        "account) — don't retry the same complaint hoping for a "
+        "different result. For a visitor saying the app/service is too "
+        "expensive and considering leaving with NO specific booking in "
+        "dispute, omit booking_id entirely — that's a separate small "
+        "retention gesture, unrelated to a refund."
     ),
     "input_schema": {
         "type": "object",
@@ -113,26 +105,9 @@ CREDIT_COINS = {
                 "type": "string",
                 "description": "The disputed booking. Omit ONLY for a no-booking-in-dispute retention gesture (e.g. 'this app is too expensive').",
             },
-            "issue_tag": {
-                "type": "string",
-                "enum": [
-                    # Step 1 — astrologer/system at fault: always refund in full.
-                    "astro_did_not_reply", "no_one_responded",
-                    "consultation_not_done_coins_deducted", "astrologer_answered_and_disconnected",
-                    # Step 2 — visitor's own fault: never refund.
-                    "user_did_not_reply", "user_replied_late",
-                    # Step 3 — partial fault: refund unused coins + tier bonus.
-                    "astrologer_took_more_time", "audio_video_not_clear",
-                    "chat_glitch_mid_session", "session_disconnected_mid_way",
-                    # Step 4 — no clear factual signal: escalate to a ticket automatically.
-                    "astrologer_not_helpful", "poor_prediction_quality",
-                    "scam_or_trust_complaint", "blank_screen_unconfirmed",
-                ],
-                "description": "Required when booking_id is set — omit only for the retention case above.",
-            },
             "reason": {
                 "type": "string",
-                "description": "One-line factual summary for the ticket/audit trail if this escalates or gets reviewed later.",
+                "description": "One-line factual summary of what the visitor said happened, for the audit trail.",
             },
         },
         "required": ["reason"],
