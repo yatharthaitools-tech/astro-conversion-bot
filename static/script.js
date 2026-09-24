@@ -385,7 +385,7 @@ async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
 
 function closeChat() {
   clearInactivityTimer();
-  sendNativeAction('close_chat');
+  sendNativeAction('close_chat', { reason: 'close' });
   // No host app (plain-browser testing) — there's nothing to dismiss, so
   // lock the widget itself into an ended state instead of leaving it open.
   if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
