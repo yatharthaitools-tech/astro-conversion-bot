@@ -95,9 +95,9 @@ def _handle_trigger_recommend_astrologer(safe_input, ctx):
     # Real availability, not a guess — this is what tells the model whether
     # a named astrologer is actually busy/offline before it decides whether
     # notify_me_subscribe even applies. Never assume someone's unavailable
-    # without this. next_available_at is a real scheduled return time when
-    # known (distinct from a short "busy, back in ~N min" wait) — state it
-    # directly rather than only offering to notify when it's set.
+    # without this. next_available_at is a dummy 0-2h estimate for v1 (see
+    # recommend_flow_client._with_eta) — state it directly, then push
+    # connecting with someone else now (see the tool's own description).
     return {
         "ok": True,
         "shown": astrologer["name"] if action["display_mode"] == "specific" else "best_match",

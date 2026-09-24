@@ -19,17 +19,24 @@ native bridge so tapping Connect routes to the right person) — it never
 changes what the visitor sees on the card itself, which is why `concern`
 no longer affects the card's copy — it's still accepted and still shapes
 the bot's own chat text, just not this component.
-"""
-import re
 
-from integrations import redash_client
+"When will X be back" answers are DELIBERATELY dummy for v1, same
+"don't depend on Redash for this" call as the refund engine: no real
+schedule data, no expert_id lookup (redash_client.get_astrologer_
+availability still exists for a possible v2, just not called from
+here) — anyone not "Available now" gets a fresh random 0-2h wait
+computed on the spot (_with_eta below), and the required next move for
+the model is always to push connecting with someone else right now
+instead (see agent/tool_schemas.py's TRIGGER_RECOMMEND_ASTROLOGER).
+"""
+import random
+import re
 
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
 
 ASTROLOGERS = [
     {
         "id": "mahalakshmi",
-        "expert_id": None,  # real Redash expert_id, once known — see get_astrologer_availability() below
         "name": "Mahalakshmi",
         "specialty": "Face reading, Palm reading, Numerology",
         "languages": "Hindi, English, Telugu",
@@ -39,11 +46,9 @@ ASTROLOGERS = [
         "price": "10/min",
         "price_original": "56/min",
         "availability": "Available now",
-        "next_available_at": None,
     },
     {
         "id": "samrat",
-        "expert_id": None,
         "name": "Samrat",
         "specialty": "Face reading, Tarot, Vedic",
         "languages": "Hindi, English, Telugu, Marathi",
@@ -52,12 +57,10 @@ ASTROLOGERS = [
         "rating": 4.6,
         "price": "12/min",
         "price_original": None,
-        "availability": "Busy, wait ~15 min",
-        "next_available_at": None,  # short wait — the availability text IS the ETA
+        "availability": "Busy right now",
     },
     {
         "id": "nidhi",
-        "expert_id": None,
         "name": "Nidhi",
         "specialty": "Face reading, Palm reading, Numerology",
         "languages": "Hindi, English, Telugu",
@@ -67,7 +70,6 @@ ASTROLOGERS = [
         "price": "15/min",
         "price_original": "25/min",
         "availability": "Offline right now",
-        "next_available_at": "6:00 PM today",  # a real scheduled-return case, distinct from "busy, back in ~N min"
     },
 ]
 
@@ -77,28 +79,24 @@ CONNECT_LABELS = {
     "ml": "ഇപ്പോൾ ബന്ധിപ്പിക്കుக",
 }
 
-def _with_live_availability(astrologer: dict) -> dict:
-    """Overlays real Redash availability (get_astrologer_availability) when
-    this astrologer's expert_id is known and the query succeeds; otherwise
-    returns the mocked entry unchanged. Real data only knows online/offline
-    + a predicted ETA, not this mock's "busy, wait ~N min" nuance — once
-    expert_id is set, that field's mocked "Busy..." text stops applying."""
-    expert_id = astrologer.get("expert_id")
-    if not expert_id:
-        return astrologer
-    live = redash_client.get_astrologer_availability(expert_id)
-    if live is None:
-        return astrologer
+
+def _with_eta(astrologer: dict) -> dict:
+    """Available now -> no ETA needed. Anyone else gets a fresh random
+    5-120 minute dummy wait, generated fresh on every call (not stored,
+    not deterministic per astrologer) — intentionally not a real
+    schedule."""
     merged = dict(astrologer)
-    merged["availability"] = "Available now" if live["is_online_now"] else "Offline right now"
-    merged["next_available_at"] = live["next_available_at"]
+    if astrologer["availability"] == "Available now":
+        merged["next_available_at"] = None
+    else:
+        merged["next_available_at"] = f"in about {random.randint(5, 120)} minutes"
     return merged
 
 
 def get_astrologer(astrologer_id: str):
     for a in ASTROLOGERS:
         if a["id"] == astrologer_id:
-            return _with_live_availability(a)
+            return _with_eta(a)
     return None
 
 
@@ -132,12 +130,11 @@ def search(query: str) -> list:
 
 def pick_best_match():
     """Placeholder for the real matching system — first genuinely
-    available astrologer (not busy, not offline)."""
+    available astrologer."""
     for a in ASTROLOGERS:
-        live = _with_live_availability(a)
-        if live["next_available_at"] is None and not live["availability"].lower().startswith("busy"):
-            return live
-    return _with_live_availability(ASTROLOGERS[0])
+        if a["availability"] == "Available now":
+            return _with_eta(a)
+    return _with_eta(ASTROLOGERS[0])
 
 
 def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:

@@ -35,7 +35,7 @@ def run_chat_turn(question: str, history, ctx, turn_number: int, past_warmup: bo
     if not client.is_configured():
         return None
 
-    system_instruction = prompt.build_system_prompt(ctx.language, turn_number, past_warmup)
+    system_instruction = prompt.build_system_prompt(ctx.language, turn_number, past_warmup, ctx.user_name)
     contents = _history_to_contents(history)
     contents.append({"role": "user", "parts": [{"text": question}]})
 

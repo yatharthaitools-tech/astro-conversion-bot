@@ -59,19 +59,34 @@ def _ltv_from(payload: dict):
         return None
 
 
+# The app sends this literal placeholder for an anonymous/unnamed
+# session — never usable for personalization, unlike a real name.
+_PLACEHOLDER_NAMES = {"guest"}
+
+
+def _user_name_from(payload: dict):
+    raw = str((payload or {}).get("user_name") or "").strip()
+    if not raw or raw.lower() in _PLACEHOLDER_NAMES:
+        return None
+    return raw
+
+
 def resolve_session(payload: dict, session_id: str, language: str, history: list) -> SessionContext:
     """Resolves the identity for this request — the real app-supplied
     user_id when present (see module docstring for what "real" doesn't
     yet mean), else a session-derived pseudo-id. user_name/ltv are only
     ever read from the payload alongside a real identity — same trust
     boundary as user_id/oauth_token, since ltv directly sizes real coin
-    credits (see services/refund_service.py's decide_v1_refund)."""
+    credits (see services/refund_service.py's decide_v1_refund).
+    user_name is further filtered down to an actual name — "Guest" (the
+    app's own placeholder for an anonymous session) becomes None, same
+    as if it were never sent, so prompt.py never has to special-case it."""
     real_user_id, oauth_token = _real_identity_from(payload)
     user_id = real_user_id or ("u_" + hashlib.sha256(session_id.encode()).hexdigest()[:12])
     user_name = None
     ltv = None
     if real_user_id:
-        user_name = str((payload or {}).get("user_name") or "").strip() or None
+        user_name = _user_name_from(payload)
         ltv = _ltv_from(payload)
     has_prior_reply = any(
         (turn.get("sender") or turn.get("role")) == "bot" for turn in (history or [])

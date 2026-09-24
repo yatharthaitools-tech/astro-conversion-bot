@@ -78,3 +78,26 @@ def test_resolve_session_requires_both_user_id_and_oauth_token():
     )
     assert ctx2.user_id == "claimed_identity"
     assert ctx2.oauth_token == "some-token"
+
+
+def test_user_name_filters_the_guest_placeholder():
+    from agent.context import resolve_session
+
+    # "Guest" is the app's own placeholder for an anonymous session —
+    # never usable for personalization (agent/prompt.py's name_line).
+    for placeholder in ("Guest", "guest", "GUEST"):
+        ctx = resolve_session(
+            {"user_id": "u1", "oauth_token": "tok", "user_name": placeholder}, "sess-1", "en", []
+        )
+        assert ctx.user_name is None, placeholder
+
+    # A real name passes through untouched.
+    ctx2 = resolve_session(
+        {"user_id": "u1", "oauth_token": "tok", "user_name": "Priya"}, "sess-1", "en", []
+    )
+    assert ctx2.user_name == "Priya"
+
+    # No oauth_token -> no real identity -> user_name never trusted either,
+    # even if it looks like a real name.
+    ctx3 = resolve_session({"user_id": "u1", "user_name": "Priya"}, "sess-1", "en", [])
+    assert ctx3.user_name is None
