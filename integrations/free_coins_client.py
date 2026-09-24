@@ -1,22 +1,13 @@
-"""Shapes a coin credit into the free-coins bottomsheet payload the
-native app already expects — matching the real Startup Config API's
-Approach 3 (a separate `POST /v1/bottomsheet/` call, chosen over folding
-this into the startup-config response, which needs to stay lightweight
-with no UI elements, and over parallel-polling two APIs at app open
-where the higher-priority bottomsheet can get blocked by whichever
-response lands first).
+"""Shapes a coin credit into the free-coins payload shown in-chat.
 
-This bot never calls that real endpoint — a credit happens via
+The real native app's WebView bridge only implements two actions —
+start_random_flow and close_chat — there's no native free-coins
+bottomsheet to hand this to. A credit happens via
 services/ltv_service.py -> integrations/coin_credit_client.py exactly
 like any other credit; this module's only job is shaping the RESULT of
-that credit into the `freeCoins` JSON shape below so it can be handed
-straight to the native bridge (script.js's SHOW_FREE_COINS_BOTTOMSHEET),
-and from there straight into the native app's existing bottomsheet UI —
-no new rendering needed on either side.
-
-`POST /v1/free-coins/seen-ack/` (acknowledging the visitor saw/dismissed
-it, keyed by lastSeenTransactionId) is entirely the native app's own
-responsibility once it has that id — this bot has no part in that call.
+that credit into the `freeCoins` shape below for script.js's
+showCoinsCreditedCard to render entirely in-chat, followed straight into
+the connect card (see agent/tool_registry.py's _handle_credit_coins).
 """
 
 # Placeholder — swap for the real Lottie asset URL when this goes live;

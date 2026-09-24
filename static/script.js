@@ -134,13 +134,12 @@ async function sendToBot(text) {
       // Otherwise: a card was just shown last turn — the reply text still
       // carries the offer, but we don't repeat the same card back-to-back.
     } else if (data.action && data.action.type === 'free_coins_bottomsheet') {
-      // The app's own real bottomsheet is native-side — hand the payload
-      // straight to it in the exact shape its free-coins API returns.
-      // Also shown as its own small card right here in-chat (a credit
-      // is easy to miss as a single line of text), then straight into
-      // the connect card too — a credit alone is a dead end, this is
-      // the natural next step while the coins are top of mind.
-      sendToNativeHost({ type: 'SHOW_FREE_COINS_BOTTOMSHEET', freeCoins: data.action.freeCoins });
+      // Free-coins UI lives entirely in-chat — the real native app has
+      // no bottomsheet action to hand this to (its bridge only supports
+      // start_random_flow and close_chat), so this card IS the whole
+      // celebration. Straight into the connect card right after — a
+      // credit alone is a dead end, this is the natural next step while
+      // the coins are top of mind.
       showCoinsCreditedCard(data.action.freeCoins);
       if (data.action.connect) {
         renderConnectCard({
@@ -228,25 +227,23 @@ function sendToNativeHost(payload) {
 
 // Generic native-action bridge — the contract the React Native side reads
 // on its WebView onMessage handler: {action: '<name>', payload: {...}}.
-// Every new action this bot ever needs to trigger on the app is just
-// another call to this with its own action name/params, no new bridge
-// mechanism required. Still need the real action name for
-// SHOW_FREE_COINS_BOTTOMSHEET before that one migrates too.
+// The real app implements exactly two actions: start_random_flow and
+// close_chat — nothing else exists on the native side, so every trigger
+// this bot ever fires has to be one of those two.
 function sendNativeAction(action, params = {}) {
   return sendToNativeHost({ action, payload: params });
 }
 
 function triggerNativeConnect(mode, astrologer, isGeneric) {
-  if (isGeneric) {
-    // The app's own matching system picks who to connect to (this bot
-    // never does, see pick_best_match()'s own placeholder note server-side).
-    sendNativeAction('start_random_flow', { service_type: mode });
-    return;
-  }
-  // Visitor named a specific astrologer — mirrors start_random_flow's
-  // shape (same service_type param) plus astrologer_id so native knows
-  // who specifically to connect to instead of picking one itself.
-  sendNativeAction('start_specific_flow', { service_type: mode, astrologer_id: astrologer.id });
+  // Both the generic ("app's own matching system picks") and the
+  // specific (visitor named someone available) cases go through the
+  // same start_random_flow action — there's no separate native action
+  // for the specific case. astrologer_id is included when known so
+  // native can route to that person if it chooses to use the field;
+  // omitted entirely for the generic case, same as before.
+  const payload = { service_type: mode };
+  if (!isGeneric) payload.astrologer_id = astrologer.id;
+  sendNativeAction('start_random_flow', payload);
 }
 
 // Fires once after INACTIVITY_MS of no visitor activity mid-conversation
