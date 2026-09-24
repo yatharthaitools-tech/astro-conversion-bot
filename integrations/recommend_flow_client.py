@@ -102,6 +102,19 @@ def get_astrologer(astrologer_id: str):
     return None
 
 
+_PUBLIC_PROFILE_FIELDS = (
+    "id", "name", "specialty", "languages", "experience", "consultations",
+    "rating", "price", "availability", "next_available_at",
+)
+
+
+def _public_profile(astrologer: dict) -> dict:
+    """What the bot may tell a visitor about a named astrologer — real
+    roster fields only, so "tell me about Samrat" / "what does Nidhi
+    charge" / "is she online" is answered from data, never guessed."""
+    return {k: astrologer.get(k) for k in _PUBLIC_PROFILE_FIELDS}
+
+
 def search(query: str) -> list:
     """Fuzzy, partial-name lookup over the real roster — handles a bare
     first name, a nickname, or an 'Astro <name>'-style title prefix.
@@ -111,7 +124,9 @@ def search(query: str) -> list:
     this is meant to scale to the actual roster, not this mock's size.
     Still useful even though the card never shows a name: it's what lets
     the bot correctly resolve an id for availability checks and for the
-    native bridge to route to the right person on Connect.
+    native bridge to route to the right person on Connect. Each match
+    carries the astrologer's public profile (_public_profile) so questions
+    about them are answered from real data.
     """
     normalized = (query or "").lower().strip()
     for title in _TITLE_WORDS:
@@ -126,7 +141,7 @@ def search(query: str) -> list:
         if normalized == name_lower or normalized in name_lower or any(
             normalized == t or normalized in t for t in tokens
         ):
-            matches.append({"id": a["id"], "name": a["name"]})
+            matches.append(_public_profile(_with_live_availability(a)))
     return matches
 
 

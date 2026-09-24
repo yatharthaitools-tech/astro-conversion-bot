@@ -168,6 +168,42 @@ def get_booking_details(user_id: str, booking_id: str = None) -> dict:
     }
 
 
+_MOCK_ASTROLOGER_NAMES = {"mahalakshmi": "Mahalakshmi", "samrat": "Samrat", "nidhi": "Nidhi"}
+
+
+def _mock_started_at(user_id: str, booking_id: str, index: int) -> str:
+    days_ago = index + _seed(f"{user_id}:{booking_id}", "days_ago") % 2
+    hour = 9 + _seed(f"{user_id}:{booking_id}", "hour") % 13
+    minute = _seed(f"{user_id}:{booking_id}", "minute") % 60
+    when = datetime.now(_IST).replace(hour=hour, minute=minute) - timedelta(days=days_ago)
+    day = {0: "today", 1: "yesterday"}.get(days_ago, when.strftime("%-d %b"))
+    return f"{day}, {when.strftime('%-I:%M %p')}"
+
+
+def get_recent_bookings(user_id: str, limit: int = 5) -> list:
+    """The visitor's most recent consultations, newest first — so the bot
+    can work out WHICH session a complaint is about from what the visitor
+    remembers (astrologer name, roughly when, how long, coins) instead of
+    asking for a booking id they've never seen. Real query: bookings_booking
+    joined to the expert's display name and the wallet deduction, filtered
+    to this user, ordered by start time desc."""
+    bookings = []
+    latest = get_booking_details(user_id)["booking_id"]
+    for i in range(limit):
+        bid = latest if i == 0 else f"bk_{_seed(user_id, f'booking_{i}') % 100000}"
+        details = get_booking_details(user_id, bid)
+        bookings.append({
+            "booking_id": bid,
+            "astrologer_name": _MOCK_ASTROLOGER_NAMES[details["astrologer_id"]],
+            "mode": "call" if _seed(f"{user_id}:{bid}", "mode") % 3 == 0 else "chat",
+            "started_at": _mock_started_at(user_id, bid, i),
+            "duration_minutes": round(details["duration_seconds"] / 60, 1),
+            "coins_deducted": details["coins_deducted"],
+            "status": details["status"],
+        })
+    return bookings
+
+
 def get_monthly_bonus_count(user_id: str) -> int:
     """How many Step-3 (partial-fault) bonuses this visitor has already
     received this calendar month — enforces refund_service.decide()'s

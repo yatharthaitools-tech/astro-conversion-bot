@@ -29,12 +29,40 @@ GET_PAYMENT_STATUS = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+GET_RECENT_BOOKINGS = {
+    "name": "get_recent_bookings",
+    "description": (
+        "The visitor's recent consultations, newest first: astrologer "
+        "name, chat/call, when it started, minutes, coins deducted, and a "
+        "booking_id. Visitors NEVER know booking ids (or any ids) — never "
+        "ask for one. Whenever a complaint or refund is about a past "
+        "session, call this first, passing the astrologer's name if they "
+        "mentioned one. Then pin down the session with ONE short question "
+        "in their terms, e.g. 'Your chat with Samrat yesterday at 6:10 PM "
+        "— 12 min, 40 coins, that one?' (one match), or name the two or "
+        "three likeliest by astrologer + time and ask which (several). "
+        "Wait for the visitor to confirm before calling "
+        "check_refund_eligibility or credit_coins with that booking_id. "
+        "Never show the booking_id itself to the visitor. No bookings "
+        "returned means there's nothing on record to refund — say so."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "astrologer_name": {
+                "type": "string",
+                "description": "The astrologer's name as the visitor said it, if they mentioned one — narrows the list.",
+            }
+        },
+    },
+}
+
 GET_BOOKING_DETAILS = {
     "name": "get_booking_details",
     "description": (
         "Fetches a specific booking's real status: duration, coins "
-        "deducted, astrologer response count, and end reason. Omit "
-        "booking_id to get the visitor's most recent booking. Always call "
+        "deducted, astrologer response count, and end reason, for a "
+        "booking_id from get_recent_bookings. Always call "
         "this before discussing a refund/duration dispute or 'astrologer "
         "took too long' — never estimate what happened in a session."
     ),
@@ -43,7 +71,7 @@ GET_BOOKING_DETAILS = {
         "properties": {
             "booking_id": {
                 "type": "string",
-                "description": "Specific booking to check. Omit for the most recent one.",
+                "description": "A booking_id from get_recent_bookings.",
             }
         },
     },
@@ -64,7 +92,7 @@ CHECK_REFUND_ELIGIBILITY = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "booking_id": {"type": "string", "description": "The disputed booking."}
+            "booking_id": {"type": "string", "description": "The disputed booking — a booking_id from get_recent_bookings that the visitor confirmed."}
         },
         "required": ["booking_id"],
     },
@@ -111,7 +139,7 @@ CREDIT_COINS = {
         "properties": {
             "booking_id": {
                 "type": "string",
-                "description": "The disputed booking. Omit ONLY for a no-booking-in-dispute retention gesture (e.g. 'this app is too expensive').",
+                "description": "The disputed booking — a booking_id from get_recent_bookings that the visitor confirmed is the one they mean. Omit ONLY for a no-booking-in-dispute retention gesture (e.g. 'this app is too expensive').",
             },
             "issue_tag": {
                 "type": "string",
@@ -158,7 +186,10 @@ SEARCH_ASTROLOGERS = {
         "say you don't have information, just pivot), one means unambiguous "
         "(confirm briefly, then proceed), two or more means genuinely "
         "ambiguous (ask a one-line question naming the options before "
-        "proceeding — never pick one silently)."
+        "proceeding — never pick one silently). Each match carries that "
+        "astrologer's real profile (specialty, languages, experience, "
+        "consultations, rating, price, availability) — use it to answer "
+        "questions about them, and never add anything it doesn't say."
     ),
     "input_schema": {
         "type": "object",
@@ -455,6 +486,7 @@ GET_APP_FAQ = {
 
 ALL_TOOLS = [
     GET_PAYMENT_STATUS,
+    GET_RECENT_BOOKINGS,
     GET_BOOKING_DETAILS,
     CHECK_REFUND_ELIGIBILITY,
     GET_LTV_TIER,

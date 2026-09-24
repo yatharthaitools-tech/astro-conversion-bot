@@ -37,14 +37,47 @@ def _handle_get_payment_status(safe_input, ctx):
     return redash_client.get_payment_status(ctx.user_id)
 
 
+# How far back a booking can be and still be looked at / refunded here.
+_BOOKING_LOOKBACK = 20
+
+_UNKNOWN_BOOKING = {
+    "error": "unknown_booking",
+    "hint": "Not one of this visitor's bookings. Call get_recent_bookings, confirm the session with the visitor, then use its booking_id.",
+}
+
+
+def _is_own_booking(ctx, booking_id: str) -> bool:
+    """A booking_id must come from this visitor's own recent bookings —
+    never a guessed/invented id, and never someone else's."""
+    return any(b["booking_id"] == booking_id
+               for b in redash_client.get_recent_bookings(ctx.user_id, _BOOKING_LOOKBACK))
+
+
+def _handle_get_recent_bookings(safe_input, ctx):
+    bookings = redash_client.get_recent_bookings(ctx.user_id)
+    name = (safe_input.get("astrologer_name") or "").strip().lower()
+    if name:
+        wanted = {m["name"].lower() for m in recommend_flow_client.search(name)} or {name}
+        matching = [b for b in bookings if b["astrologer_name"].lower() in wanted]
+        if matching:
+            return {"bookings": matching, "filtered_by": safe_input.get("astrologer_name")}
+        return {"bookings": bookings, "note": "No recent booking with that astrologer — these are all recent ones."}
+    return {"bookings": bookings}
+
+
 def _handle_get_booking_details(safe_input, ctx):
-    return redash_client.get_booking_details(ctx.user_id, safe_input.get("booking_id"))
+    booking_id = safe_input.get("booking_id")
+    if booking_id and not _is_own_booking(ctx, booking_id):
+        return _UNKNOWN_BOOKING
+    return redash_client.get_booking_details(ctx.user_id, booking_id)
 
 
 def _handle_check_refund_eligibility(safe_input, ctx):
     booking_id = safe_input.get("booking_id")
     if not booking_id:
         return {"error": "booking_id is required"}
+    if not _is_own_booking(ctx, booking_id):
+        return _UNKNOWN_BOOKING
     return refund_service.check_eligibility(ctx.user_id, booking_id)
 
 
@@ -64,6 +97,8 @@ def _handle_credit_coins(safe_input, ctx):
     else:
         if not issue_tag:
             return {"error": "issue_tag is required when booking_id is set"}
+        if not _is_own_booking(ctx, booking_id):
+            return _UNKNOWN_BOOKING
         result = refund_service.decide(ctx.user_id, booking_id, issue_tag, reason)
         if result.get("route_to_ticket"):
             severe = result.get("reason_code") == "severe_language_no_bonus"
@@ -193,6 +228,7 @@ def _handle_get_app_faq(safe_input, ctx):
 
 REGISTRY = {
     "get_payment_status": _handle_get_payment_status,
+    "get_recent_bookings": _handle_get_recent_bookings,
     "get_booking_details": _handle_get_booking_details,
     "check_refund_eligibility": _handle_check_refund_eligibility,
     "get_ltv_tier": _handle_get_ltv_tier,

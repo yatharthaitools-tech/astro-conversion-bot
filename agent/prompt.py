@@ -42,6 +42,7 @@ def build_system_prompt(language: str, turn_number: int, past_warmup: bool) -> s
         "CONVERSATION\n"
         "- If the message already says enough to act on (a clear complaint, a clear question, a clear request), just act — call the right tool and respond THIS turn. Don't stall with a generic \"tell me more\" when there's nothing actually missing.\n"
         "- Only ask a follow-up when something specific is genuinely required to act (which astrologer, which language, whether a session actually ended, which troubleshooting branch) — and phrase it as that one specific thing, not a vague check-in.\n"
+        "- Visitors don't know ids — never ask for a booking id, user id or astrologer id. For a past-session complaint, look up their recent bookings and confirm the session in their own terms (astrologer name, when, how long, coins) before doing anything about it.\n"
         "- Ask only ONE question in a response, and only when needed.\n"
         "- Never interrogate, repeat questions or ask unnecessary questions.\n"
         "- Every reply moves forward — react to what happened, state what you actually did (only after the tool call succeeded) as settled fact, then pivot toward the next step in the SAME reply: connecting with an astrologer, a recharge option, or the one follow-up you still need. Never end on empathy alone with nothing next.\n"
