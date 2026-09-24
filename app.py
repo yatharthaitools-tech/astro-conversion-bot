@@ -354,6 +354,11 @@ def ask():
             # already set an action itself.
             ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(map_intent(question)))
 
+    if ctx.show_feedback and not ctx.ui_action:
+        # Every session ends on the connect card alongside the rating —
+        # the widget renders both once the chat is winding down.
+        ctx.ui_action = recommend_flow_client.trigger(lang)
+
     s3_client.log_event({
         'session_id': session_id,
         'user_id': ctx.user_id,

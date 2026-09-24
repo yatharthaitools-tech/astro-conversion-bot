@@ -19,6 +19,15 @@ const INACTIVITY_MS = 20000;
 let inactivityTimer = null;
 let hasStartedConversation = false;
 
+// Every session ends the same way — the connect card plus a star rating —
+// however it ends (resolved, closed out, gone quiet). The rating is asked
+// once per session: if the visitor already rated on their way into an
+// astrologer connect, the ending just shows the connect card.
+let sessionEnded = false;
+let ratingAsked = false;
+let lastConnectAction = null;
+const GENERIC_CONNECT_ACTION = { type: 'connect_popup', display_mode: 'general', astrologer: {} };
+
 function armInactivityTimer() {
   clearInactivityTimer();
   if (!hasStartedConversation || chatInput.disabled) return;
@@ -123,7 +132,9 @@ async function sendToBot(text) {
 
     turnsSinceLastCard += 1;
     if (data.action && data.action.type === 'connect_popup') {
-      if (turnsSinceLastCard >= 2) {
+      lastConnectAction = data.action;
+      // On an ending turn endSession() below shows the card itself.
+      if (!data.show_feedback && turnsSinceLastCard >= 2) {
         renderConnectCard(data.action);
         turnsSinceLastCard = 0;
       }
@@ -139,17 +150,20 @@ async function sendToBot(text) {
       sendToNativeHost({ type: 'SHOW_FREE_COINS_BOTTOMSHEET', freeCoins: data.action.freeCoins });
       showCoinsCreditedCard(data.action.freeCoins);
       if (data.action.connect) {
-        renderConnectCard({
+        lastConnectAction = {
           type: 'connect_popup',
           display_mode: data.action.connect.display_mode,
           astrologer: data.action.connect.astrologer,
-        });
-        turnsSinceLastCard = 0;
+        };
+        if (!data.show_feedback) {
+          renderConnectCard(lastConnectAction);
+          turnsSinceLastCard = 0;
+        }
       }
     }
 
     if (data.show_feedback) {
-      showFeedbackPrompt(data.session_id);
+      endSession();
     } else {
       armInactivityTimer();
     }
@@ -290,6 +304,14 @@ function showInactivityNudge() {
 
   chatBody.appendChild(card);
   chatBody.scrollTop = chatBody.scrollHeight;
+
+  // Still quiet a full idle window after the nudge — treat the session as
+  // over and end it the normal way (connect card + rating).
+  inactivityTimer = setTimeout(() => {
+    inactivityTimer = null;
+    card.remove();
+    endSession();
+  }, INACTIVITY_MS);
 }
 
 // A quick in-chat confirmation that coins actually landed — easy to
@@ -308,16 +330,33 @@ function showCoinsCreditedCard(freeCoins) {
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
-// A resolved issue shouldn't leave the chat sitting open indefinitely —
-// ask for a quick rating, then actually end the session: tell the native
-// host to dismiss the WebView, and lock the widget itself either way so
-// there's a real endpoint instead of an idle chat waiting forever.
-//
-// Rendered as its own card (not a plain message bubble) so it reads as a
-// distinct moment rather than getting lost in the scroll — stars fill up
-// to whichever one you're hovering, and a click confirms in place instead
-// of yanking the card out and popping a separate "thanks" bubble.
-function showFeedbackPrompt(sessionId) {
+// However the session ends — issue resolved, visitor closed it out, or
+// they went quiet — it ends on the connect card (one last route to an
+// astrologer) plus the rating, then locks the input so there's a real
+// endpoint instead of an idle chat waiting forever. The card stays
+// tappable after the rating.
+function endSession() {
+  if (sessionEnded) return;
+  sessionEnded = true;
+  clearInactivityTimer();
+  renderConnectCard(lastConnectAction || GENERIC_CONNECT_ACTION);
+  turnsSinceLastCard = 0;
+  if (ratingAsked) {
+    lockChat();
+  } else {
+    showFeedbackPrompt(lockChat);
+  }
+}
+
+// Session-level rating, asked at most once per session. Rendered as its
+// own card (not a plain message bubble) so it reads as a distinct moment
+// rather than getting lost in the scroll — stars fill up to whichever one
+// you're hovering, and a click confirms in place. `onDone` runs after a
+// rating or a skip: locking the chat at the end of a session, or carrying
+// on into the astrologer connect when the rating came up on the way there.
+function showFeedbackPrompt(onDone) {
+  ratingAsked = true;
+  const sessionId = getSessionId();
   const card = document.createElement('div');
   card.className = 'message bot feedback-card';
 
@@ -337,11 +376,12 @@ function showFeedbackPrompt(sessionId) {
     star.dataset.value = i;
     star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
     star.addEventListener('mouseenter', () => fillStars(starEls, i));
-    star.addEventListener('click', () => submitFeedback(sessionId, i, card, label, starEls, skip));
+    star.addEventListener('click', () => submitFeedback(sessionId, i, card, label, starEls, skip, onDone));
     stars.appendChild(star);
     starEls.push(star);
   }
-  stars.addEventListener('mouseleave', () => fillStars(starEls, 0));
+  // Once rated, keep the chosen stars filled instead of clearing on mouseleave.
+  stars.addEventListener('mouseleave', () => fillStars(starEls, Number(card.dataset.rating || 0)));
   card.appendChild(stars);
 
   const skip = document.createElement('button');
@@ -350,7 +390,7 @@ function showFeedbackPrompt(sessionId) {
   skip.textContent = 'Skip';
   skip.addEventListener('click', () => {
     card.remove();
-    closeChat();
+    onDone();
   });
   card.appendChild(skip);
 
@@ -362,7 +402,8 @@ function fillStars(starEls, upTo) {
   starEls.forEach((star, idx) => star.classList.toggle('filled', idx < upTo));
 }
 
-async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
+async function submitFeedback(sessionId, rating, card, label, starEls, skip, onDone) {
+  card.dataset.rating = rating;
   fillStars(starEls, rating);
   starEls.forEach((star) => { star.disabled = true; });
   skip.remove();
@@ -376,23 +417,18 @@ async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
       body: JSON.stringify({ session_id: sessionId, rating }),
     });
   } catch (error) {
-    // Best-effort — a failed rating POST shouldn't block closing the chat.
+    // Best-effort — a failed rating POST shouldn't block what comes next.
   }
-  setTimeout(closeChat, 700);
+  setTimeout(onDone, 700);
 }
 
-function closeChat() {
+function lockChat() {
   clearInactivityTimer();
-  sendNativeAction('close_chat');
-  // No host app (plain-browser testing) — there's nothing to dismiss, so
-  // lock the widget itself into an ended state instead of leaving it open.
-  if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
-    chatInput.disabled = true;
-    chatInput.placeholder = 'Chat ended';
-    sendButton.disabled = true;
-    photoBtn.disabled = true;
-    if (quickReplies) quickReplies.hidden = true;
-  }
+  chatInput.disabled = true;
+  chatInput.placeholder = 'Chat ended';
+  sendButton.disabled = true;
+  photoBtn.disabled = true;
+  if (quickReplies) quickReplies.hidden = true;
 }
 
 // Stub for the app's real recommend-astrologer flow, which this repo has no
@@ -491,7 +527,14 @@ function renderConnectCard(action) {
     btn.addEventListener('click', () => {
       chatBtn.disabled = true;
       callBtn.disabled = true;
-      triggerNativeConnect(mode, astrologer, isGeneric);
+      // Heading off to an astrologer ends this chat too — ask for the
+      // session rating first if it hasn't been asked yet.
+      if (ratingAsked) {
+        triggerNativeConnect(mode, astrologer, isGeneric);
+      } else {
+        clearInactivityTimer();
+        showFeedbackPrompt(() => triggerNativeConnect(mode, astrologer, isGeneric));
+      }
     });
   });
 
