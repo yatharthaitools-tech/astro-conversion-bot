@@ -1,7 +1,7 @@
 """Shapes a coin credit into the free-coins payload shown in-chat.
 
 The real native app's WebView bridge only implements two actions —
-start_random_flow and close_chat — there's no native free-coins
+start_random_flow and close_webview — there's no native free-coins
 bottomsheet to hand this to. A credit happens via
 services/ltv_service.py -> integrations/coin_credit_client.py exactly
 like any other credit; this module's only job is shaping the RESULT of

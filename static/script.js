@@ -137,7 +137,7 @@ async function sendToBot(text) {
     } else if (data.action && data.action.type === 'free_coins_bottomsheet') {
       // Free-coins UI lives entirely in-chat — the real native app has
       // no bottomsheet action to hand this to (its bridge only supports
-      // start_random_flow and close_chat), so this card IS the whole
+      // start_random_flow and close_webview), so this card IS the whole
       // celebration. Straight into the connect card right after — a
       // credit alone is a dead end, this is the natural next step while
       // the coins are top of mind.
@@ -229,22 +229,20 @@ function sendToNativeHost(payload) {
 // Generic native-action bridge — the contract the React Native side reads
 // on its WebView onMessage handler: {action: '<name>', payload: {...}}.
 // The real app implements exactly two actions: start_random_flow and
-// close_chat — nothing else exists on the native side, so every trigger
-// this bot ever fires has to be one of those two.
+// close_webview — nothing else exists on the native side, so every
+// trigger this bot ever fires has to be one of those two.
 function sendNativeAction(action, params = {}) {
   return sendToNativeHost({ action, payload: params });
 }
 
-function triggerNativeConnect(mode, astrologer, isGeneric) {
+function triggerNativeConnect(mode) {
   // Both the generic ("app's own matching system picks") and the
   // specific (visitor named someone available) cases go through the
   // same start_random_flow action — there's no separate native action
-  // for the specific case. astrologer_id is included when known so
-  // native can route to that person if it chooses to use the field;
-  // omitted entirely for the generic case, same as before.
-  const payload = { service_type: mode };
-  if (!isGeneric) payload.astrologer_id = astrologer.id;
-  sendNativeAction('start_random_flow', payload);
+  // for the specific case, and no astrologer_id in the payload either
+  // way: it's the "random" flow, native's own matching system always
+  // picks, this bot never routes to a specific person via the bridge.
+  sendNativeAction('start_random_flow', { service_type: mode });
 }
 
 // Fires once after INACTIVITY_MS of no visitor activity mid-conversation
@@ -383,9 +381,15 @@ async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
   setTimeout(closeChat, 700);
 }
 
-function closeChat() {
+// deeplink lets a caller send the visitor somewhere specific on close
+// (e.g. a particular app screen) instead of native's default dismiss
+// behavior — empty means "just close, no specific destination". source
+// identifies which webview triggered this, so if the app ever embeds
+// more than one WebView that all close through this same action, native
+// can tell them apart.
+function closeChat(deeplink = '') {
   clearInactivityTimer();
-  sendNativeAction('close_chat', { reason: 'close' });
+  sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
   // No host app (plain-browser testing) — there's nothing to dismiss, so
   // lock the widget itself into an ended state instead of leaving it open.
   if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
@@ -496,7 +500,7 @@ function renderConnectCard(action) {
     btn.addEventListener('click', () => {
       chatBtn.disabled = true;
       callBtn.disabled = true;
-      triggerNativeConnect(mode, astrologer, isGeneric);
+      triggerNativeConnect(mode);
     });
   });
 
@@ -513,11 +517,10 @@ chatInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') sendMessage();
 });
 
-// The cross in the header — same close_chat action as the feedback
+// The cross in the header — same close_webview action as the feedback
 // card's "Skip"/inactivity nudge's "Close it out", just reachable from
-// anywhere in the conversation, not only at the end of it. Native side
-// dismisses the WebView on close_chat, which drops back to its own home
-// screen — there's no separate "open home" action to send on top of it.
+// anywhere in the conversation, not only at the end of it. No deeplink
+// passed here — native falls back to its own default dismiss behavior.
 if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
 
 photoBtn.addEventListener('click', () => photoInput.click());
