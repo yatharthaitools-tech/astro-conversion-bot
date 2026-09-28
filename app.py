@@ -185,11 +185,11 @@ messages = []
 
 def normalize_text(text: str) -> str:
     # \w doesn't match Indic combining vowel signs/virama (Unicode category
-    # Mc/Mn, e.g. Tamil \u0bbf/\u0bcd, Devanagari \u093f/\u094d) \u2014 without whitelisting each
+    # Mc/Mn, e.g. Tamil ி/், Devanagari ि/्) — without whitelisting each
     # script's full block explicitly, words in these scripts get shredded
     # into fragments and keyword matching silently breaks.
     value = text.lower().strip()
-    value = re.sub(r'[^\w\s\u0900-\u097f\u0b80-\u0bff\u0c00-\u0c7f\u0d00-\u0d7f]', ' ', value)
+    value = re.sub(r'[^\w\sऀ-ॿ஀-௿ఀ-౿ഀ-ൿ]', ' ', value)
     value = re.sub(r'\s+', ' ', value)
     return value.strip()
 
@@ -201,13 +201,13 @@ def detect_language(text: str) -> str:
     strings, but Gemini's own prompt still replies natively in whatever
     script it actually sees.
     """
-    if re.search(r'[\u0900-\u097F]', text):
+    if re.search(r'[ऀ-ॿ]', text):
         return 'hi'
-    if re.search(r'[\u0B80-\u0BFF]', text):
+    if re.search(r'[஀-௿]', text):
         return 'ta'
-    if re.search(r'[\u0C00-\u0C7F]', text):
+    if re.search(r'[ఀ-౿]', text):
         return 'te'
-    if re.search(r'[\u0D00-\u0D7F]', text):
+    if re.search(r'[ഀ-ൿ]', text):
         return 'ml'
     return 'en'
 
@@ -390,6 +390,28 @@ def feedback():
         return jsonify({'ok': False, 'error': 'session_id and an integer rating 1-5 are required'}), 400
     ok = dashboard_db.record_rating(session_id, rating)
     return jsonify({'ok': ok})
+
+
+@app.route('/event', methods=['POST'])
+def track_event():
+    """UI interaction analytics — quick-reply taps, send/upload/close/
+    connect-card taps, ratings given (script.js's trackEvent()). Not a
+    security boundary like /ask (session_id/user_id here are only ever
+    used as analytics labels, never to gate a privileged action), so
+    unlike agent_context.resolve_session, the client-sent values are
+    trusted as-is — same posture as s3_client.log_event's fire-and-forget
+    logging elsewhere in this app."""
+    payload = request.get_json(silent=True) or {}
+    event_type = str(payload.get('event_type') or '').strip()
+    if not event_type:
+        return jsonify({'ok': False, 'error': 'event_type is required'}), 400
+    session_id = str(payload.get('session_id') or '').strip() or None
+    user_id = str(payload.get('user_id') or '').strip() or None
+    event_data = payload.get('event_data')
+    if not isinstance(event_data, dict):
+        event_data = {}
+    dashboard_db.record_event(session_id, user_id, event_type, event_data)
+    return jsonify({'ok': True})
 
 
 if __name__ == '__main__':

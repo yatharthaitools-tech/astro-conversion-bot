@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Analytics — AstroLokal Admin{% endblock %}
+
+{% macro period_card(label, value, pct, compare_label, compare_value) %}
+<div class="kpi-card">
+  <div class="kpi-value">{{ value }}</div>
+  <div class="kpi-label">{{ label }}</div>
+  <div class="kpi-delta {{ 'delta-up' if (pct is not none and pct > 0) else ('delta-down' if (pct is not none and pct < 0) else 'delta-flat') }}">
+    {% if pct is not none %}{{ '+' if pct > 0 else '' }}{{ pct }}%{% else %}—{% endif %} vs {{ compare_label }} ({{ compare_value }})
+  </div>
+</div>
+{% endmacro %}
+
+{% macro delta_cell(value, pct) %}{{ value }}{% if pct is not none %} <span class="delta-inline {{ 'delta-up' if pct > 0 else ('delta-down' if pct < 0 else 'delta-flat') }}">({{ '+' if pct > 0 else '' }}{{ pct }}%)</span>{% endif %}{% endmacro %}
+
 {% block content %}
 <h1>Analytics</h1>
 <p class="ticket-subline">How the bot is doing across every conversation, not just tickets.</p>
@@ -31,6 +44,48 @@
   <div class="kpi-card">
     <div class="kpi-value">{{ stats.open_tickets }}</div>
     <div class="kpi-label">open tickets ({{ stats.total_tickets }} total)</div>
+  </div>
+</div>
+
+<div class="panel-grid">
+  <div class="panel panel-wide">
+    <h2>Conversations started — D0D / W0W / M0M</h2>
+    <div class="kpi-grid">
+      {{ period_card('Today', stats.conversations_period.today, stats.conversations_period.dod_pct, 'yesterday', stats.conversations_period.yesterday) }}
+      {{ period_card('This week', stats.conversations_period.this_week, stats.conversations_period.wow_pct, 'last week', stats.conversations_period.last_week) }}
+      {{ period_card('This month', stats.conversations_period.this_month, stats.conversations_period.mom_pct, 'last month', stats.conversations_period.last_month) }}
+    </div>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>All tracked taps — D0D / W0W / M0M</h2>
+    <div class="kpi-grid">
+      {{ period_card('Today', events.overall.today, events.overall.dod_pct, 'yesterday', events.overall.yesterday) }}
+      {{ period_card('This week', events.overall.this_week, events.overall.wow_pct, 'last week', events.overall.last_week) }}
+      {{ period_card('This month', events.overall.this_month, events.overall.mom_pct, 'last month', events.overall.last_month) }}
+    </div>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>Events by type</h2>
+    <p class="ticket-subline">Quick-reply taps, close/send/upload/connect-card taps, ratings given — each row's deltas are that event type's own D0D/W0W/M0M.</p>
+    <table class="admin-table">
+      <thead><tr><th>Event</th><th>Total</th><th>Today (D0D)</th><th>This week (W0W)</th><th>This month (M0M)</th></tr></thead>
+      <tbody>
+        {% for row in events.event_totals %}
+        {% set t = events.by_type[row.event_type] %}
+        <tr>
+          <td class="mono">{{ row.event_type }}</td>
+          <td>{{ row.count }}</td>
+          <td>{{ delta_cell(t.today, t.dod_pct) }}</td>
+          <td>{{ delta_cell(t.this_week, t.wow_pct) }}</td>
+          <td>{{ delta_cell(t.this_month, t.mom_pct) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-state">No events logged yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
