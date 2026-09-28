@@ -6,14 +6,12 @@ const photoInput = document.getElementById('photoInput');
 const quickReplies = document.getElementById('quickReplies');
 const closeBtn = document.getElementById('closeBtn');
 
-// Tara's avatar — a small illustrated persona (not a stock photo of a
-// real person, to avoid implying the AI is an actual specific human),
-// reused next to every plain-text bot reply and the typing indicator.
-// Flat fill (no gradient defs) since this gets stamped into the DOM
-// once per message — an SVG <linearGradient id="..."> would collide
-// across copies; the header's own richer version (with the gradient)
-// is rendered once, server-side, in index.html.
-const TARA_AVATAR_SVG = '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#e8532f"/><path d="M8 34.5c0-6.8 5.4-11.8 12-11.8s12 5 12 11.8" fill="#fff" opacity="0.95"/><path d="M20 5.2c-5.7 0-9.9 4.4-9.9 10.1 0 3.6 1.6 7.2 3 9.3.1-4.3.9-8 2.6-10.2 1.5 2 4 3.2 6.3 3.2s4.8-1.2 6.3-3.2c1.7 2.2 2.5 5.9 2.6 10.2 1.4-2.1 3-5.7 3-9.3 0-5.7-4.2-10.1-9.9-10.1-1.4 0-2.7.2-4 .7-.7.2-1.4.4-2 .3z" fill="#43291d"/><path d="M11.8 17c-.6 3.6-.4 7.4.6 9.8" fill="none" stroke="#43291d" stroke-width="2.2" stroke-linecap="round"/><path d="M28.2 17c.6 3.6.4 7.4-.6 9.8" fill="none" stroke="#43291d" stroke-width="2.2" stroke-linecap="round"/><circle cx="20" cy="18.3" r="6.4" fill="#f7cca4"/><circle cx="20" cy="13.6" r="0.95" fill="#e8532f"/><path d="M17.1 20.6c1.3 1.1 4.5 1.1 5.8 0" stroke="#a5623a" stroke-width="1" stroke-linecap="round" fill="none"/></svg>';
+// Tara's avatar photo, reused next to every plain-text bot reply and
+// the typing indicator — same image as the header's own avatar
+// (templates/index.html), cropped from the same roster photo already
+// used elsewhere in this app (static/avatars/connect-avatar-1.png's
+// center portrait, see the crop this file was generated from).
+const TARA_AVATAR_IMG = '<img src="/static/avatars/tara-avatar.png" alt="" />';
 
 // A connect card showing up every single turn reads as spammy — require
 // at least one turn's gap since the last one before showing another.
@@ -82,10 +80,12 @@ function getSessionId() {
 
 // UI interaction analytics — fire-and-forget, must never affect the chat
 // itself even if the call fails or the browser blocks it. keepalive lets
-// the request survive a page teardown right after firing (e.g. close_tap,
-// where the native host may dismiss this WebView immediately after).
-// Backed by app.py's /event route -> dashboard_db.record_event(), read by
-// the admin Analytics page's Events section.
+// the request survive a page teardown right after firing (e.g.
+// consulation_ended, right before the native host may dismiss this
+// WebView). Backed by app.py's /event route -> dashboard_db.record_
+// event(), read by the admin Analytics page's Events section. Event
+// names/field names below intentionally match the analytics team's own
+// schema verbatim (including its "consulation" spelling), not a typo.
 function trackEvent(eventType, eventData) {
   try {
     fetch('/event', {
@@ -121,7 +121,7 @@ function appendMessage(sender, text) {
     row.className = 'message-row';
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
-    avatar.innerHTML = TARA_AVATAR_SVG;
+    avatar.innerHTML = TARA_AVATAR_IMG;
     row.appendChild(avatar);
     row.appendChild(msg);
     chatBody.appendChild(row);
@@ -150,6 +150,14 @@ function appendImageMessage(sender, url) {
 
 if (chatBody && chatBody.children.length === 0) {
   appendMessage('bot', buildWelcomeMessage());
+  // Session-lifecycle pair with consulation_ended (closeChat below) —
+  // spelling/field names match the analytics team's own event schema
+  // verbatim, not a typo left in by accident.
+  trackEvent('consulation_started', {
+    screen_name: 'chatbot_screen',
+    event_timestamp: new Date().toISOString(),
+    event_type: 'app',
+  });
 }
 
 // Shown the moment the visitor's message goes out, removed the moment a
@@ -160,7 +168,7 @@ function showTypingIndicator() {
   row.className = 'message-row';
   const avatar = document.createElement('div');
   avatar.className = 'message-avatar';
-  avatar.innerHTML = TARA_AVATAR_SVG;
+  avatar.innerHTML = TARA_AVATAR_IMG;
   const msg = document.createElement('div');
   msg.className = 'message bot typing-indicator';
   msg.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
@@ -246,10 +254,18 @@ async function sendMessage(overrideText) {
   const text = (overrideText !== undefined ? overrideText : chatInput.value || '').trim();
   if (!text) return;
 
-  // Only the visitor's own typed-and-sent message counts as a "send
-  // message tap" — overrideText means this came from a quick reply or
-  // the inactivity nudge instead, both tracked as their own event.
-  if (overrideText === undefined) trackEvent('send_message_tap', {});
+  // chip_selected also covers a free-typed message (chip_name/chip_id
+  // 'N/A') — overrideText means this came from a quick reply instead
+  // (tracked with its real chip_name/chip_id at the click handler
+  // below) or the inactivity nudge, so skip it here either way.
+  if (overrideText === undefined) {
+    trackEvent('chip_selected', {
+      screen_name: 'chatbot_screen',
+      chip_name: 'N/A',
+      chip_id: 'N/A',
+      event_type: 'tap',
+    });
+  }
 
   clearInactivityTimer();
 
@@ -476,6 +492,15 @@ const PROFILE_DEEPLINK = 'astrolokal://BottomTabs?screen=Profile';
 function closeChat(deeplink = PROFILE_DEEPLINK) {
   clearInactivityTimer();
   sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
+  // Session-lifecycle pair with consulation_started above — fired from
+  // here (not a specific button) since this is the one place the chat
+  // session actually ends, whichever path got it there (header cross,
+  // feedback skip, or the auto-close after a rating).
+  trackEvent('consulation_ended', {
+    screen_name: 'chatbot_screen',
+    event_timestamp: new Date().toISOString(),
+    event_type: 'app',
+  });
   // No host app (plain-browser testing) — there's nothing to dismiss, so
   // lock the widget itself into an ended state instead of leaving it open.
   if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
@@ -509,6 +534,11 @@ function renderConnectCard(action) {
   const astrologer = action.astrologer;
   if (!astrologer) return;
   const isGeneric = action.display_mode !== 'specific';
+
+  trackEvent('viewed_connect_card', {
+    screen_name: 'chatbot_screen',
+    event_type: 'screen_view',
+  });
 
   const card = document.createElement('div');
   card.className = 'message bot connect-card';
@@ -584,7 +614,10 @@ function renderConnectCard(action) {
   // app's own naming for this call type.
   [[chatBtn, 'chat'], [callBtn, 'audio']].forEach(([btn, mode]) => {
     btn.addEventListener('click', () => {
-      trackEvent('connect_card_tap', { mode, display_mode: action.display_mode });
+      trackEvent('tap_connect_card', {
+        screen_name: 'chatbot_screen',
+        event_type: 'tap',
+      });
       chatBtn.disabled = true;
       callBtn.disabled = true;
       triggerNativeConnect(mode);
@@ -608,10 +641,9 @@ chatInput.addEventListener('keydown', (event) => {
 // card's "Skip"/inactivity nudge's "Close it out", just reachable from
 // anywhere in the conversation, not only at the end of it. Uses
 // closeChat's PROFILE_DEEPLINK default, same as those other paths.
-if (closeBtn) closeBtn.addEventListener('click', () => {
-  trackEvent('close_tap', {});
-  closeChat();
-});
+// consulation_ended fires from inside closeChat() itself, not here —
+// same event regardless of which path closed the chat.
+if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
 
 photoBtn.addEventListener('click', () => {
   trackEvent('upload_image_tap', {});
@@ -626,7 +658,12 @@ photoInput.addEventListener('change', () => {
 document.querySelectorAll('.quick-reply').forEach((button) => {
   button.addEventListener('click', () => {
     const question = button.getAttribute('data-text');
-    trackEvent('quick_reply_tap', { question });
+    trackEvent('chip_selected', {
+      screen_name: 'chatbot_screen',
+      chip_name: question,
+      chip_id: button.getAttribute('data-chip-id') || 'N/A',
+      event_type: 'tap',
+    });
     sendMessage(question);
   });
 });

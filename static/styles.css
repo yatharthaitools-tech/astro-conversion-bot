@@ -58,7 +58,13 @@ button, input { font: inherit; }
   flex-shrink: 0;
   display: flex;
 }
-.brand-mark svg { display: block; }
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
 /* Small "online now" indicator on Tara's avatar — a quick, familiar
    signal that this is a live, responsive assistant, not a static FAQ
    bot. Ping animation respects prefers-reduced-motion below. */
@@ -173,7 +179,13 @@ button, input { font: inherit; }
   height: 24px;
   border-radius: 50%;
 }
-.message-avatar svg { display: block; width: 100%; height: 100%; }
+.message-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
 
 .message.typing-indicator {
   display: flex;

@@ -175,9 +175,9 @@ _ICON_COIN = (
 )
 
 quick_replies = [
-    {"text": "Marriage isn't happening", "icon": _ICON_HEART},
-    {"text": "Career feels stuck", "icon": _ICON_BRIEFCASE},
-    {"text": "Facing money problems", "icon": _ICON_COIN},
+    {"id": "marriage", "text": "Marriage isn't happening", "icon": _ICON_HEART},
+    {"id": "career", "text": "Career feels stuck", "icon": _ICON_BRIEFCASE},
+    {"id": "money", "text": "Facing money problems", "icon": _ICON_COIN},
 ]
 
 messages = []
