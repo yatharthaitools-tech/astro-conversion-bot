@@ -49,6 +49,8 @@ GET_BOOKING_DETAILS = {
     },
 }
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 CHECK_REFUND_ELIGIBILITY = {
     "name": "check_refund_eligibility",
     "description": (
@@ -82,6 +84,8 @@ GET_LTV_TIER = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 CREDIT_COINS = {
     "name": "credit_coins",
     "description": (
@@ -147,6 +151,12 @@ SEARCH_ASTROLOGERS = {
 TRIGGER_RECOMMEND_ASTROLOGER = {
     "name": "trigger_recommend_astrologer",
     "description": (
+        "CRITICAL: whenever your reply text says anything like 'connect "
+        "you', 'tap below', 'here's someone available', or otherwise "
+        "references this card or offer, you MUST call this tool in that "
+        "exact same turn — never write that language without the matching "
+        "call. The visitor must never see text describing a connect card "
+        "that wasn't actually triggered.\n\n"
         "Surfaces the Chat/Call connect entry point in the chat UI — always "
         "the same anonymous 'connect with a top astrologer' card, never a "
         "name or photo, regardless of astrologer_id. Astrologer "
@@ -274,7 +284,23 @@ CREATE_SUPPORT_TICKET = {
         "explicitly wants a cash refund (never payable in coins), or asks "
         "for a person. NEVER tell the visitor a ticket was raised, or that "
         "a team was notified, unless this tool was actually called in this "
-        "exact turn and it succeeded. Use 'account' for a delete-account "
+        "exact turn and it succeeded.\n\n"
+        "TEMPORARY — coin credits are paused: credit_coins and "
+        "check_refund_eligibility are both disabled for now, so no coin "
+        "credit or refund goes out automatically for ANYTHING — a "
+        "disputed booking, astrologer-didn't-respond, 'too expensive', or "
+        "any other complaint that used to get a credit. Never promise "
+        "coins, a refund, or a credit amount for any of these. Instead, "
+        "every time: apologize once, briefly and genuinely ('sorry you "
+        "had that experience' / 'maaf karna, yeh sahi nahi hua'), call "
+        "this tool with category='refund', and in that SAME reply ALSO "
+        "call trigger_recommend_astrologer to offer connecting them with "
+        "a top astrologer right now — that's the actual make-good while "
+        "the ticket is with the CS team. Never describe or offer that "
+        "connect option in text without also calling trigger_recommend_"
+        "astrologer in the same turn; the card has to actually be there "
+        "whenever you reference it.\n\n"
+        "Use 'account' for a delete-account "
         "request once you've asked why and it isn't something you can fix "
         "in this chat — never claim the account was deleted, only that "
         "it's been sent to the team who handles it. Use 'report' for the "
@@ -286,9 +312,8 @@ CREATE_SUPPORT_TICKET = {
         "confirms it. Use 'escalation' for a visitor asking for a manager/"
         "senior person, or saying this is their second time writing with "
         "nothing resolved. For a legal threat or fraud accusation, use "
-        "'escalation' or 'refund' immediately — do NOT call credit_coins "
-        "as a response to a threat, that reads as admitting fault; this "
-        "ticket is the only response."
+        "'escalation' or 'refund' immediately — this ticket is the only "
+        "response, never any credit or promise of one."
     ),
     "input_schema": {
         "type": "object",
@@ -328,7 +353,10 @@ LOG_FEATURE_REQUEST = {
         "what's not working first, and only log it once they've actually "
         "given a reason (or flatly insist without one after being asked). "
         "If the reason is cost/value ('too expensive', 'not worth it'), "
-        "prefer credit_coins as a retention gesture over logging this. "
+        "coin credits are disabled for now — don't offer a retention "
+        "credit. Apologize briefly, call create_support_ticket "
+        "(category='refund'), and call trigger_recommend_astrologer in "
+        "the same reply to offer connecting them with a top astrologer. "
         "Also use 'astrologer_signup_lead' when someone wants to JOIN the "
         "platform as an astrologer — this logs their interest for the "
         "onboarding team to reach out directly; never redirect them off-app "
@@ -384,8 +412,11 @@ GET_WALLET_STATUS = {
         "coins keep going down' / 'coins missing' complaint that ISN'T "
         "about one specific booking — if nothing was really deducted, "
         "explain the balance is safe rather than offering a credit. "
-        "Never call credit_coins just because a balance looks lower than "
-        "expected without checking this first."
+        "credit_coins is disabled for now — if a real deduction here is "
+        "what the visitor's disputing, don't offer a credit yourself; "
+        "call create_support_ticket (category='refund') and offer to "
+        "connect them with a top astrologer via trigger_recommend_"
+        "astrologer instead."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
@@ -438,9 +469,13 @@ GET_APP_FAQ = {
 ALL_TOOLS = [
     GET_PAYMENT_STATUS,
     GET_BOOKING_DETAILS,
-    CHECK_REFUND_ELIGIBILITY,
+    # CHECK_REFUND_ELIGIBILITY and CREDIT_COINS deliberately NOT
+    # registered for now — coin credits of any kind are paused. Any
+    # refund/credit-worthy complaint routes through CREATE_SUPPORT_
+    # TICKET's category='refund' + TRIGGER_RECOMMEND_ASTROLOGER instead
+    # (see CREATE_SUPPORT_TICKET's own description). Schemas/handlers/
+    # service code stay in place, ready to re-enable.
     GET_LTV_TIER,
-    CREDIT_COINS,
     SEARCH_ASTROLOGERS,
     TRIGGER_RECOMMEND_ASTROLOGER,
     NOTIFY_ME_SUBSCRIBE,
