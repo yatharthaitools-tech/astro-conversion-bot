@@ -186,9 +186,10 @@ def _handle_get_app_faq(safe_input, ctx):
 REGISTRY = {
     "get_payment_status": _handle_get_payment_status,
     "get_booking_details": _handle_get_booking_details,
-    "check_refund_eligibility": _handle_check_refund_eligibility,
+    # "check_refund_eligibility": _handle_check_refund_eligibility, and
+    # "credit_coins": _handle_credit_coins, -- deliberately not
+    # registered right now, see tool_schemas.py's ALL_TOOLS comment.
     "get_ltv_tier": _handle_get_ltv_tier,
-    "credit_coins": _handle_credit_coins,
     "search_astrologers": _handle_search_astrologers,
     "trigger_recommend_astrologer": _handle_trigger_recommend_astrologer,
     "notify_me_subscribe": _handle_notify_me_subscribe,

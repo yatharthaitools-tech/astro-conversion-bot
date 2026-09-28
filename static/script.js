@@ -381,13 +381,17 @@ async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
   setTimeout(closeChat, 700);
 }
 
+// Default close destination: the app's own Profile tab — closing the
+// chat drops the visitor there rather than wherever they happened to
+// open it from.
+const PROFILE_DEEPLINK = 'astrolokal://BottomTabs?screen=Profile';
+
 // deeplink lets a caller send the visitor somewhere specific on close
 // (e.g. a particular app screen) instead of native's default dismiss
-// behavior — empty means "just close, no specific destination". source
-// identifies which webview triggered this, so if the app ever embeds
-// more than one WebView that all close through this same action, native
-// can tell them apart.
-function closeChat(deeplink = '') {
+// behavior. source identifies which webview triggered this, so if the
+// app ever embeds more than one WebView that all close through this
+// same action, native can tell them apart.
+function closeChat(deeplink = PROFILE_DEEPLINK) {
   clearInactivityTimer();
   sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
   // No host app (plain-browser testing) — there's nothing to dismiss, so
@@ -519,8 +523,8 @@ chatInput.addEventListener('keydown', (event) => {
 
 // The cross in the header — same close_webview action as the feedback
 // card's "Skip"/inactivity nudge's "Close it out", just reachable from
-// anywhere in the conversation, not only at the end of it. No deeplink
-// passed here — native falls back to its own default dismiss behavior.
+// anywhere in the conversation, not only at the end of it. Uses
+// closeChat's PROFILE_DEEPLINK default, same as those other paths.
 if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
 
 photoBtn.addEventListener('click', () => photoInput.click());
