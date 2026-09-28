@@ -41,7 +41,12 @@ button, input { font: inherit; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
+  /* iOS WebView safe-area: the header sits at the very top of the
+     screen (see the full-screen mobile layout below), so its own
+     top padding has to clear the notch/status bar/Dynamic Island —
+     env() resolves to 0 anywhere without one (desktop preview, older
+     iOS, Android), so this is safe to apply unconditionally. */
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px;
   background: white;
   border-bottom: 1px solid var(--line);
 }
@@ -170,7 +175,10 @@ button, input { font: inherit; }
 .input-bar {
   display: flex;
   gap: 8px;
-  padding: 10px;
+  /* Same safe-area handling as the header, for the bottom edge — the
+     home indicator on notched iPhones sits right over this bar
+     otherwise. */
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--line);
   background: white;
 }
