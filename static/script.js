@@ -6,7 +6,14 @@ const photoInput = document.getElementById('photoInput');
 const quickReplies = document.getElementById('quickReplies');
 const closeBtn = document.getElementById('closeBtn');
 
-const welcomeMessage = "Hi! I'm here to help you figure things out. What's been on your mind?";
+// Tara's avatar — a small illustrated persona (not a stock photo of a
+// real person, to avoid implying the AI is an actual specific human),
+// reused next to every plain-text bot reply and the typing indicator.
+// Flat fill (no gradient defs) since this gets stamped into the DOM
+// once per message — an SVG <linearGradient id="..."> would collide
+// across copies; the header's own richer version (with the gradient)
+// is rendered once, server-side, in index.html.
+const TARA_AVATAR_SVG = '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#e8532f"/><path d="M8 34.5c0-6.8 5.4-11.8 12-11.8s12 5 12 11.8" fill="#fff" opacity="0.95"/><path d="M20 5.2c-5.7 0-9.9 4.4-9.9 10.1 0 3.6 1.6 7.2 3 9.3.1-4.3.9-8 2.6-10.2 1.5 2 4 3.2 6.3 3.2s4.8-1.2 6.3-3.2c1.7 2.2 2.5 5.9 2.6 10.2 1.4-2.1 3-5.7 3-9.3 0-5.7-4.2-10.1-9.9-10.1-1.4 0-2.7.2-4 .7-.7.2-1.4.4-2 .3z" fill="#43291d"/><path d="M11.8 17c-.6 3.6-.4 7.4.6 9.8" fill="none" stroke="#43291d" stroke-width="2.2" stroke-linecap="round"/><path d="M28.2 17c.6 3.6.4 7.4-.6 9.8" fill="none" stroke="#43291d" stroke-width="2.2" stroke-linecap="round"/><circle cx="20" cy="18.3" r="6.4" fill="#f7cca4"/><circle cx="20" cy="13.6" r="0.95" fill="#e8532f"/><path d="M17.1 20.6c1.3 1.1 4.5 1.1 5.8 0" stroke="#a5623a" stroke-width="1" stroke-linecap="round" fill="none"/></svg>';
 
 // A connect card showing up every single turn reads as spammy — require
 // at least one turn's gap since the last one before showing another.
@@ -43,6 +50,26 @@ const appUserId = document.body.dataset.userId || '';
 const appOauthToken = document.body.dataset.oauthToken || '';
 const appUserName = document.body.dataset.userName || '';
 const appLtv = document.body.dataset.ltv || '';
+
+// Same identity trust rule as agent/context.py's resolve_session(): a
+// name is only usable when it rode along with a real identity (both
+// user_id and oauth_token present — a bare name with no token is
+// exactly what a spoofed/untrusted request would send), and "Guest"
+// (the app's own placeholder for an anonymous session) is never usable
+// either way, case-insensitively, same as the backend.
+const GREETING_PLACEHOLDER_NAMES = new Set(['guest']);
+
+function resolveGreetingName() {
+  if (!appUserId || !appOauthToken) return null;
+  const trimmed = appUserName.trim();
+  if (!trimmed || GREETING_PLACEHOLDER_NAMES.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+}
+
+function buildWelcomeMessage() {
+  const name = resolveGreetingName();
+  return name ? `Hi ${name}! How can I help you today?` : 'Hi! How can I help you today?';
+}
 
 function getSessionId() {
   let sessionId = sessionStorage.getItem('astro_session_id');
@@ -83,7 +110,25 @@ function appendMessage(sender, text) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   msg.textContent = text;
-  chatBody.appendChild(msg);
+
+  if (sender === 'bot') {
+    // Plain bot replies sit next to a small Tara avatar — reads as
+    // someone actually answering, not a wall of unattributed bubbles.
+    // The special cards (connect/feedback/nudge/coins) skip this on
+    // purpose: they're already distinct, full-width moments of their
+    // own, not conversational lines.
+    const row = document.createElement('div');
+    row.className = 'message-row';
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.innerHTML = TARA_AVATAR_SVG;
+    row.appendChild(avatar);
+    row.appendChild(msg);
+    chatBody.appendChild(row);
+  } else {
+    chatBody.appendChild(msg);
+  }
+
   chatBody.scrollTop = chatBody.scrollHeight;
   history.push({ sender, text });
   return msg;
@@ -104,19 +149,26 @@ function appendImageMessage(sender, url) {
 }
 
 if (chatBody && chatBody.children.length === 0) {
-  appendMessage('bot', welcomeMessage);
+  appendMessage('bot', buildWelcomeMessage());
 }
 
 // Shown the moment the visitor's message goes out, removed the moment a
 // reply (or an error) is ready — so there's never a silent gap while
 // Gemini's own tool-calling loop is actually thinking.
 function showTypingIndicator() {
+  const row = document.createElement('div');
+  row.className = 'message-row';
+  const avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.innerHTML = TARA_AVATAR_SVG;
   const msg = document.createElement('div');
   msg.className = 'message bot typing-indicator';
   msg.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
-  chatBody.appendChild(msg);
+  row.appendChild(avatar);
+  row.appendChild(msg);
+  chatBody.appendChild(row);
   chatBody.scrollTop = chatBody.scrollHeight;
-  return msg;
+  return row;
 }
 
 async function sendToBot(text) {

@@ -51,15 +51,39 @@ button, input { font: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .brand-mark {
-  width: 34px;
-  height: 34px;
+  position: relative;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background: rgba(255, 111, 61, 0.12);
-  color: var(--sun-dark);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
+  display: flex;
+}
+.brand-mark svg { display: block; }
+/* Small "online now" indicator on Tara's avatar — a quick, familiar
+   signal that this is a live, responsive assistant, not a static FAQ
+   bot. Ping animation respects prefers-reduced-motion below. */
+.brand-status {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #34c759;
+  border: 2px solid white;
+}
+.brand-status::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: #34c759;
+  opacity: 0.5;
+  animation: status-ping 2.4s infinite;
+}
+@keyframes status-ping {
+  0% { transform: scale(1); opacity: 0.5; }
+  70%, 100% { transform: scale(1.9); opacity: 0; }
 }
 .chat-modal-title { min-width: 0; flex: 1; }
 .close-btn {
@@ -96,6 +120,18 @@ button, input { font: inherit; }
   gap: 10px;
   background: linear-gradient(180deg, #fff, #fff3e8);
 }
+/* Every new message (and the row it may sit in) enters with a soft
+   fade + rise rather than just popping in — a small, cheap touch that
+   makes the chat feel alive rather than static. Respects a visitor's
+   reduced-motion preference below. */
+@keyframes message-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .message, .message-row { animation: message-in 0.28s ease-out both; }
+}
+
 .message {
   max-width: 86%;
   padding: 11px 14px;
@@ -108,14 +144,36 @@ button, input { font: inherit; }
   background: linear-gradient(135deg, var(--sun), var(--sun-dark));
   color: white;
   border-bottom-right-radius: 6px;
+  box-shadow: 0 3px 10px rgba(232, 83, 47, 0.18);
 }
 .message.bot {
-  align-self: flex-start;
   background: white;
   border: 1px solid var(--line);
   color: var(--ink);
   border-bottom-left-radius: 6px;
+  box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
 }
+
+/* Bot replies (plain text + the typing indicator) sit in a row next to
+   a small Tara avatar — reads as "someone" replying, not a wall of
+   unattributed text bubbles. Every other card type (connect card,
+   feedback, nudge, coins) stays avatar-less on purpose: they're
+   already visually distinct, full-width moments of their own. */
+.message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 92%;
+  align-self: flex-start;
+}
+.message-row .message.bot { align-self: auto; max-width: 100%; min-width: 0; }
+.message-avatar {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.message-avatar svg { display: block; width: 100%; height: 100%; }
 
 .message.typing-indicator {
   display: flex;
@@ -163,7 +221,9 @@ button, input { font: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.quick-reply { transition: border-color 0.15s, background 0.15s, transform 0.1s; }
 .quick-reply:hover { border-color: rgba(255, 111, 61, 0.55); background: rgba(255, 111, 61, 0.06); }
+.quick-reply:active { transform: scale(0.98); }
 .quick-reply-icon {
   display: flex;
   align-items: center;
@@ -194,8 +254,10 @@ button, input { font: inherit; }
   border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
 }
 .photo-btn:hover { background: rgba(255, 111, 61, 0.1); }
+.photo-btn:active { transform: scale(0.94); }
 .text-input {
   flex: 1;
   border: 1px solid var(--line);
@@ -204,8 +266,13 @@ button, input { font: inherit; }
   padding: 11px 16px;
   color: var(--ink);
   min-width: 0;
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
-.text-input:focus { outline: 2px solid rgba(255, 111, 61, 0.35); }
+.text-input:focus {
+  outline: none;
+  border-color: rgba(255, 111, 61, 0.45);
+  box-shadow: 0 0 0 3px rgba(255, 111, 61, 0.15);
+}
 .send-btn {
   display: flex;
   align-items: center;
@@ -214,11 +281,15 @@ button, input { font: inherit; }
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: var(--sun-dark);
+  background: linear-gradient(135deg, var(--sun), var(--sun-dark));
   color: white;
   cursor: pointer;
   flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(232, 83, 47, 0.28);
+  transition: transform 0.12s, box-shadow 0.12s;
 }
+.send-btn:hover { box-shadow: 0 4px 14px rgba(232, 83, 47, 0.38); }
+.send-btn:active { transform: scale(0.92); }
 
 /* --- Inline "connect with a top astrologer" card — a real component
    (markup + CSS), not the old baked static image. Rebuilt to match that
