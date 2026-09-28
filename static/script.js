@@ -6,7 +6,12 @@ const photoInput = document.getElementById('photoInput');
 const quickReplies = document.getElementById('quickReplies');
 const closeBtn = document.getElementById('closeBtn');
 
-const welcomeMessage = "Hi! I'm here to help you figure things out. What's been on your mind?";
+// Tara's avatar photo, reused next to every plain-text bot reply and
+// the typing indicator — same image as the header's own avatar
+// (templates/index.html), cropped from the same roster photo already
+// used elsewhere in this app (static/avatars/connect-avatar-1.png's
+// center portrait, see the crop this file was generated from).
+const TARA_AVATAR_IMG = '<img src="/static/avatars/tara-avatar.png" alt="" />';
 
 // A connect card showing up every single turn reads as spammy — require
 // at least one turn's gap since the last one before showing another.
@@ -44,6 +49,26 @@ const appOauthToken = document.body.dataset.oauthToken || '';
 const appUserName = document.body.dataset.userName || '';
 const appLtv = document.body.dataset.ltv || '';
 
+// Same identity trust rule as agent/context.py's resolve_session(): a
+// name is only usable when it rode along with a real identity (both
+// user_id and oauth_token present — a bare name with no token is
+// exactly what a spoofed/untrusted request would send), and "Guest"
+// (the app's own placeholder for an anonymous session) is never usable
+// either way, case-insensitively, same as the backend.
+const GREETING_PLACEHOLDER_NAMES = new Set(['guest']);
+
+function resolveGreetingName() {
+  if (!appUserId || !appOauthToken) return null;
+  const trimmed = appUserName.trim();
+  if (!trimmed || GREETING_PLACEHOLDER_NAMES.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+}
+
+function buildWelcomeMessage() {
+  const name = resolveGreetingName();
+  return name ? `Hi ${name}! How can I help you today?` : 'Hi! How can I help you today?';
+}
+
 function getSessionId() {
   let sessionId = sessionStorage.getItem('astro_session_id');
   if (!sessionId) {
@@ -55,10 +80,12 @@ function getSessionId() {
 
 // UI interaction analytics — fire-and-forget, must never affect the chat
 // itself even if the call fails or the browser blocks it. keepalive lets
-// the request survive a page teardown right after firing (e.g. close_tap,
-// where the native host may dismiss this WebView immediately after).
-// Backed by app.py's /event route -> dashboard_db.record_event(), read by
-// the admin Analytics page's Events section.
+// the request survive a page teardown right after firing (e.g.
+// consulation_ended, right before the native host may dismiss this
+// WebView). Backed by app.py's /event route -> dashboard_db.record_
+// event(), read by the admin Analytics page's Events section. Event
+// names/field names below intentionally match the analytics team's own
+// schema verbatim (including its "consulation" spelling), not a typo.
 function trackEvent(eventType, eventData) {
   try {
     fetch('/event', {
@@ -83,7 +110,25 @@ function appendMessage(sender, text) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   msg.textContent = text;
-  chatBody.appendChild(msg);
+
+  if (sender === 'bot') {
+    // Plain bot replies sit next to a small Tara avatar — reads as
+    // someone actually answering, not a wall of unattributed bubbles.
+    // The special cards (connect/feedback/nudge/coins) skip this on
+    // purpose: they're already distinct, full-width moments of their
+    // own, not conversational lines.
+    const row = document.createElement('div');
+    row.className = 'message-row';
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.innerHTML = TARA_AVATAR_IMG;
+    row.appendChild(avatar);
+    row.appendChild(msg);
+    chatBody.appendChild(row);
+  } else {
+    chatBody.appendChild(msg);
+  }
+
   chatBody.scrollTop = chatBody.scrollHeight;
   history.push({ sender, text });
   return msg;
@@ -104,19 +149,34 @@ function appendImageMessage(sender, url) {
 }
 
 if (chatBody && chatBody.children.length === 0) {
-  appendMessage('bot', welcomeMessage);
+  appendMessage('bot', buildWelcomeMessage());
+  // Session-lifecycle pair with consulation_ended (closeChat below) —
+  // spelling/field names match the analytics team's own event schema
+  // verbatim, not a typo left in by accident.
+  trackEvent('consulation_started', {
+    screen_name: 'chatbot_screen',
+    event_timestamp: new Date().toISOString(),
+    event_type: 'app',
+  });
 }
 
 // Shown the moment the visitor's message goes out, removed the moment a
 // reply (or an error) is ready — so there's never a silent gap while
 // Gemini's own tool-calling loop is actually thinking.
 function showTypingIndicator() {
+  const row = document.createElement('div');
+  row.className = 'message-row';
+  const avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.innerHTML = TARA_AVATAR_IMG;
   const msg = document.createElement('div');
   msg.className = 'message bot typing-indicator';
   msg.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
-  chatBody.appendChild(msg);
+  row.appendChild(avatar);
+  row.appendChild(msg);
+  chatBody.appendChild(row);
   chatBody.scrollTop = chatBody.scrollHeight;
-  return msg;
+  return row;
 }
 
 async function sendToBot(text) {
@@ -194,10 +254,18 @@ async function sendMessage(overrideText) {
   const text = (overrideText !== undefined ? overrideText : chatInput.value || '').trim();
   if (!text) return;
 
-  // Only the visitor's own typed-and-sent message counts as a "send
-  // message tap" — overrideText means this came from a quick reply or
-  // the inactivity nudge instead, both tracked as their own event.
-  if (overrideText === undefined) trackEvent('send_message_tap', {});
+  // chip_selected also covers a free-typed message (chip_name/chip_id
+  // 'N/A') — overrideText means this came from a quick reply instead
+  // (tracked with its real chip_name/chip_id at the click handler
+  // below) or the inactivity nudge, so skip it here either way.
+  if (overrideText === undefined) {
+    trackEvent('chip_selected', {
+      screen_name: 'chatbot_screen',
+      chip_name: 'N/A',
+      chip_id: 'N/A',
+      event_type: 'tap',
+    });
+  }
 
   clearInactivityTimer();
 
@@ -424,33 +492,36 @@ const PROFILE_DEEPLINK = 'astrolokal://BottomTabs?screen=Profile';
 function closeChat(deeplink = PROFILE_DEEPLINK) {
   clearInactivityTimer();
   sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
-  // No host app (plain-browser testing) — there's nothing to dismiss, so
-  // lock the widget itself into an ended state instead of leaving it open.
+  // Session-lifecycle pair with consulation_started above — fired from
+  // here (not a specific button) since this is the one place the chat
+  // session actually ends, whichever path got it there (header cross,
+  // feedback skip, or the auto-close after a rating).
+  trackEvent('consulation_ended', {
+    screen_name: 'chatbot_screen',
+    event_timestamp: new Date().toISOString(),
+    event_type: 'app',
+  });
+  // No host app (plain-browser testing) — there's nothing to dismiss.
+  // Keep the input usable rather than locking it: closing is a soft
+  // "wrap up" signal, not a hard stop, so someone who changes their
+  // mind and keeps typing should still be able to continue the chat.
   if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
-    chatInput.disabled = true;
-    chatInput.placeholder = 'Chat ended';
-    sendButton.disabled = true;
-    photoBtn.disabled = true;
-    if (closeBtn) closeBtn.disabled = true;
     if (quickReplies) quickReplies.hidden = true;
   }
 }
 
 // Stub for the app's real recommend-astrologer flow, which this repo has no
-// access to. The card is a real component (markup + CSS below), not a
-// baked image — no generated text, name or photo is templated into it
-// though; astrologer_id (when resolved) only travels under the hood to
-// the native bridge, it never changes what's shown on the card itself.
+// access to. The card itself is the fixed design reference image
+// (static/avatars/connect-card.jpg) — no generated text, name or photo
+// is templated into it; astrologer_id (when resolved) only travels
+// under the hood to the native bridge, it never changes what's shown
+// on the card. Only the Chat/Call buttons below the image are real.
 
-// Icon glyphs for the stats row and buttons — inline SVG (not another
-// image asset) so they scale crisply and inherit currentColor.
+// Icon glyphs for the connect card's Chat/Call buttons — inline SVG
+// (not an image asset) so they scale crisply and inherit currentColor.
 const CC_ICONS = {
-  medal: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5 L7 21 L12 18 L17 21 L15.5 12.5"/></svg>',
-  people: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M15.5 14.3c2.9.3 5 2.3 5 5.2"/></svg>',
-  star: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26 6.91 1-5 4.87 1.18 6.87L12 18.27l-6.18 3.23L7 14.63l-5-4.87 6.91-1L12 2.5z"/></svg>',
   chat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H8l-4 4V5z"/></svg>',
   phone: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.5 2.3.8 3.6.9.6 0 1 .5 1 1V21c0 .6-.4 1-1 1C10.6 22 2 13.4 2 3c0-.6.4-1 1-1h3.9c.5 0 1 .4 1 1 .1 1.3.4 2.5.9 3.6.1.4.1.8-.2 1.1L6.6 10.8z"/></svg>',
-  lotus: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21c-4-1.5-6-5-6-8 2.5.5 4.5 2 6 4.5C13.5 14 15.5 12.5 18 12c0 3-2 6.5-6 9z"/><path d="M12 17c-1-3-1-6.5 0-10 1 3.5 1 7 0 10z"/><path d="M12 15c-2.5-2-4-4.5-4-7.5C10.5 8.5 12 10.5 12 13c0-2.5 1.5-4.5 4-5.5 0 3-1.5 5.5-4 7.5z"/></svg>',
 };
 
 function renderConnectCard(action) {
@@ -458,62 +529,24 @@ function renderConnectCard(action) {
   if (!astrologer) return;
   const isGeneric = action.display_mode !== 'specific';
 
+  trackEvent('viewed_connect_card', {
+    screen_name: 'chatbot_screen',
+    event_type: 'screen_view',
+  });
+
   const card = document.createElement('div');
   card.className = 'message bot connect-card';
 
-  const avatars = document.createElement('div');
-  avatars.className = 'cc-avatars';
-  const avatarSrcs = [
-    '/static/avatars/connect-avatar-2.png',
-    '/static/avatars/connect-avatar-1.png',
-    '/static/avatars/connect-avatar-3.png',
-  ];
-  avatarSrcs.forEach((src, i) => {
-    const img = document.createElement('img');
-    img.className = i === 1 ? 'cc-avatar cc-avatar-main' : 'cc-avatar';
-    img.src = src;
-    img.alt = '';
-    avatars.appendChild(img);
-  });
-  const lotus = document.createElement('div');
-  lotus.className = 'cc-avatar cc-lotus';
-  lotus.innerHTML = CC_ICONS.lotus;
-  avatars.appendChild(lotus);
-  card.appendChild(avatars);
-
-  const badge = document.createElement('div');
-  badge.className = 'cc-badge';
-  badge.textContent = '✨ Top astrologers for you';
-  card.appendChild(badge);
-
-  const heading = document.createElement('h3');
-  heading.className = 'cc-heading';
-  heading.textContent = 'Get guidance from our best astrologers';
-  card.appendChild(heading);
-
-  const sub = document.createElement('p');
-  sub.className = 'cc-sub';
-  sub.textContent = "We'll connect you with an astrologer who matches your concern.";
-  card.appendChild(sub);
-
-  const stats = document.createElement('div');
-  stats.className = 'cc-stats';
-  [
-    [CC_ICONS.medal, '10+ years', 'average experience'],
-    [CC_ICONS.people, '1,000+', 'users helped'],
-    [CC_ICONS.star, '4.8', 'average rating'],
-  ].forEach(([icon, value, label], i) => {
-    if (i > 0) {
-      const divider = document.createElement('div');
-      divider.className = 'cc-divider';
-      stats.appendChild(divider);
-    }
-    const stat = document.createElement('div');
-    stat.className = 'cc-stat';
-    stat.innerHTML = `<span class="cc-stat-icon">${icon}</span><span class="cc-stat-text"><span class="cc-stat-value">${value}</span><span class="cc-stat-label">${label}</span></span>`;
-    stats.appendChild(stat);
-  });
-  card.appendChild(stats);
+  // The design reference itself, shown as-is — no generated text, no
+  // per-astrologer data templated into it, same "always the same fixed
+  // design" contract as before, just the actual picture now instead of
+  // a hand-built markup recreation of it. Only the Chat/Call buttons
+  // below are real, functional elements (an image can't be clickable).
+  const img = document.createElement('img');
+  img.className = 'cc-image';
+  img.src = '/static/avatars/connect-card.jpg';
+  img.alt = 'Top astrologers for you — get guidance from our best astrologers';
+  card.appendChild(img);
 
   const actions = document.createElement('div');
   actions.className = 'cc-actions';
@@ -532,7 +565,10 @@ function renderConnectCard(action) {
   // app's own naming for this call type.
   [[chatBtn, 'chat'], [callBtn, 'audio']].forEach(([btn, mode]) => {
     btn.addEventListener('click', () => {
-      trackEvent('connect_card_tap', { mode, display_mode: action.display_mode });
+      trackEvent('tap_connect_card', {
+        screen_name: 'chatbot_screen',
+        event_type: 'tap',
+      });
       chatBtn.disabled = true;
       callBtn.disabled = true;
       triggerNativeConnect(mode);
@@ -556,10 +592,9 @@ chatInput.addEventListener('keydown', (event) => {
 // card's "Skip"/inactivity nudge's "Close it out", just reachable from
 // anywhere in the conversation, not only at the end of it. Uses
 // closeChat's PROFILE_DEEPLINK default, same as those other paths.
-if (closeBtn) closeBtn.addEventListener('click', () => {
-  trackEvent('close_tap', {});
-  closeChat();
-});
+// consulation_ended fires from inside closeChat() itself, not here —
+// same event regardless of which path closed the chat.
+if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
 
 photoBtn.addEventListener('click', () => {
   trackEvent('upload_image_tap', {});
@@ -574,7 +609,12 @@ photoInput.addEventListener('change', () => {
 document.querySelectorAll('.quick-reply').forEach((button) => {
   button.addEventListener('click', () => {
     const question = button.getAttribute('data-text');
-    trackEvent('quick_reply_tap', { question });
+    trackEvent('chip_selected', {
+      screen_name: 'chatbot_screen',
+      chip_name: question,
+      chip_id: button.getAttribute('data-chip-id') || 'N/A',
+      event_type: 'tap',
+    });
     sendMessage(question);
   });
 });
