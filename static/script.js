@@ -501,14 +501,11 @@ function closeChat(deeplink = PROFILE_DEEPLINK) {
     event_timestamp: new Date().toISOString(),
     event_type: 'app',
   });
-  // No host app (plain-browser testing) — there's nothing to dismiss, so
-  // lock the widget itself into an ended state instead of leaving it open.
+  // No host app (plain-browser testing) — there's nothing to dismiss.
+  // Keep the input usable rather than locking it: closing is a soft
+  // "wrap up" signal, not a hard stop, so someone who changes their
+  // mind and keeps typing should still be able to continue the chat.
   if (!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function')) {
-    chatInput.disabled = true;
-    chatInput.placeholder = 'Chat ended';
-    sendButton.disabled = true;
-    photoBtn.disabled = true;
-    if (closeBtn) closeBtn.disabled = true;
     if (quickReplies) quickReplies.hidden = true;
   }
 }
