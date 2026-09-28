@@ -8,10 +8,12 @@ Astrologer roster shape/data matches the real AstroLokal app (see the
 Figma reference): name, specialty tags, languages, per-minute coin
 pricing, live availability.
 
-The rendered card is a real UI component (script.js's renderConnectCard —
-markup + CSS, not an image), and it's ALWAYS the same fixed design — a
-showcase for the roster as a category, not a claim that these are the
-specific people the visitor will be connected to. Even when the visitor
+The rendered card is the fixed design reference image itself
+(static/avatars/connect-card.jpg, shown by script.js's
+renderConnectCard with real Chat/Call buttons under it), and it's
+ALWAYS the same fixed design — a showcase for the roster as a
+category, not a claim that these are the specific people the visitor
+will be connected to. Even when the visitor
 named someone specific and search_astrologers resolved a real record
 (astrologer_id set below), that record is only used internally (real
 availability for notify_me_subscribe, and the id still reaches the
@@ -139,9 +141,10 @@ def pick_best_match():
 
 def trigger(lang: str, astrologer_id: str = None, concern: str = None) -> dict:
     """Builds the connect_popup UI action. The card the visitor sees is
-    always the same fixed design (rendered client-side as a component,
-    not an image) — astrologer_id (when the visitor named someone and
-    search_astrologers resolved them) only affects internal fields: real
+    always the same fixed design (the reference image itself, rendered
+    client-side with real Chat/Call buttons under it) — astrologer_id
+    (when the visitor named someone and search_astrologers resolved
+    them) only affects internal fields: real
     availability, and the id passed to the native bridge so Connect
     routes to that person. It's never shown on the card. `concern` is
     accepted for the agent's own chat text but no longer changes the
