@@ -194,6 +194,11 @@ h2 { font-size: 0.95rem; margin: 0 0 10px; color: rgba(42, 28, 20, 0.7); }
 }
 .kpi-value { font-size: 1.6rem; font-weight: 800; }
 .kpi-label { font-size: 0.78rem; color: rgba(42, 28, 20, 0.55); margin-top: 2px; }
+.kpi-delta { font-size: 0.72rem; margin-top: 6px; }
+.delta-inline { font-size: 0.8em; font-weight: 600; }
+.delta-up { color: #2e8b57; }
+.delta-down { color: #c0392b; }
+.delta-flat { color: rgba(42, 28, 20, 0.45); }
 
 .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .panel { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }

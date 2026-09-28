@@ -102,8 +102,9 @@ def analytics():
     date_from = request.args.get('from') or None
     date_to = request.args.get('to') or None
     stats = db.get_analytics(date_from=date_from, date_to=date_to)
+    events = db.get_event_analytics()
     return render_template(
-        'analytics.html', stats=stats, filters={'from': date_from or '', 'to': date_to or ''},
+        'analytics.html', stats=stats, events=events, filters={'from': date_from or '', 'to': date_to or ''},
         show_nav=True, active='analytics',
     )
 

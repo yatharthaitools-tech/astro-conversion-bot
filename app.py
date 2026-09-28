@@ -392,5 +392,27 @@ def feedback():
     return jsonify({'ok': ok})
 
 
+@app.route('/event', methods=['POST'])
+def track_event():
+    """UI interaction analytics — quick-reply taps, send/upload/close/
+    connect-card taps, ratings given (script.js's trackEvent()). Not a
+    security boundary like /ask (session_id/user_id here are only ever
+    used as analytics labels, never to gate a privileged action), so
+    unlike agent_context.resolve_session, the client-sent values are
+    trusted as-is — same posture as s3_client.log_event's fire-and-forget
+    logging elsewhere in this app."""
+    payload = request.get_json(silent=True) or {}
+    event_type = str(payload.get('event_type') or '').strip()
+    if not event_type:
+        return jsonify({'ok': False, 'error': 'event_type is required'}), 400
+    session_id = str(payload.get('session_id') or '').strip() or None
+    user_id = str(payload.get('user_id') or '').strip() or None
+    event_data = payload.get('event_data')
+    if not isinstance(event_data, dict):
+        event_data = {}
+    dashboard_db.record_event(session_id, user_id, event_type, event_data)
+    return jsonify({'ok': True})
+
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

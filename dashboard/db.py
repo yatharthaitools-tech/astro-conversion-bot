@@ -32,6 +32,13 @@ Schema:
         concurrent/repeated credit_coins call loses the insert race and
         never fires twice. A non-success row is never auto-retried — it's
         the reconciliation worklist for ops.
+    events(id PK, session_id, user_id, event_type, event_data JSONB,
+           created_at) — client-side UI interaction analytics (quick-reply
+        taps, send/upload/close/connect-card taps, ratings given), fed by
+        app.py's /event route and static/script.js's trackEvent(). Free-
+        form: event_type isn't an enum here, script.js is the source of
+        truth for which types actually get fired. Feeds get_event_
+        analytics() below, including the D0D/W0W/M0M comparisons.
 
 `tool_trace` is stored as JSONB (list of {"tool": str, "ok": bool} dicts,
 exactly ctx.trace's shape) — read back for display, never queried into.
@@ -128,12 +135,23 @@ CREATE TABLE IF NOT EXISTS coin_credit_attempts (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    session_id TEXT,
+    user_id TEXT,
+    event_type TEXT NOT NULL,
+    event_data JSONB,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_last_seen ON conversations(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_coin_credit_attempts_status ON coin_credit_attempts(status);
+CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
 """
 
 # Columns added after the initial release — safe to re-run against a
@@ -264,6 +282,25 @@ def record_rating(session_id: str, rating: int) -> bool:
     except psycopg2.Error:
         logger.warning("record_rating failed for session %s", session_id, exc_info=True)
         return False
+
+
+def record_event(session_id: str, user_id: str, event_type: str, event_data: dict) -> None:
+    """Fire-and-forget UI interaction logging — quick-reply taps, send/
+    upload/close/connect-card taps, ratings given, called by app.py's
+    /event route. Best-effort like every other write here: a logging
+    failure must never surface to the visitor or block the interaction
+    it's recording. Feeds get_event_analytics()'s breakdown and
+    D0D/W0W/M0M numbers on the admin Analytics page."""
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO events (session_id, user_id, event_type, event_data, created_at)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (session_id, user_id, event_type, json.dumps(event_data or {}), _now()),
+                )
+    except psycopg2.Error:
+        logger.warning("record_event failed for event_type %s", event_type, exc_info=True)
 
 
 def list_conversations(limit: int = 50, offset: int = 0, language: str = None,
@@ -544,6 +581,76 @@ def _week_month_trend(cur, table: str, date_col: str, resolved_col: str) -> dict
     }
 
 
+def _period_over_period(cur, table: str, date_col: str, extra_where: str = "", params: list = None) -> dict:
+    """today/yesterday, this-week/last-week (Postgres date_trunc('week',
+    ...) is ISO-week, Monday start), and this-month/last-month counts +
+    % change for `table` — the Analytics page's D0D/W0W/M0M numbers.
+    % change is None when the prior period is 0 (nothing to divide by,
+    and "infinite% up" is a misleading thing to show) rather than
+    raising or faking a number."""
+    params = list(params or [])
+    where = f"WHERE {extra_where}" if extra_where else ""
+    cur.execute(
+        f"""SELECT
+                SUM(CASE WHEN {date_col} >= date_trunc('day', now()) THEN 1 ELSE 0 END) AS today,
+                SUM(CASE WHEN {date_col} >= date_trunc('day', now()) - interval '1 day'
+                          AND {date_col} < date_trunc('day', now()) THEN 1 ELSE 0 END) AS yesterday,
+                SUM(CASE WHEN {date_col} >= date_trunc('week', now()) THEN 1 ELSE 0 END) AS this_week,
+                SUM(CASE WHEN {date_col} >= date_trunc('week', now()) - interval '7 days'
+                          AND {date_col} < date_trunc('week', now()) THEN 1 ELSE 0 END) AS last_week,
+                SUM(CASE WHEN {date_col} >= date_trunc('month', now()) THEN 1 ELSE 0 END) AS this_month,
+                SUM(CASE WHEN {date_col} >= date_trunc('month', now()) - interval '1 month'
+                          AND {date_col} < date_trunc('month', now()) THEN 1 ELSE 0 END) AS last_month
+            FROM {table} {where}""",
+        params,
+    )
+    row = cur.fetchone()
+
+    def pct(curr, prev):
+        curr, prev = curr or 0, prev or 0
+        return round(100 * (curr - prev) / prev, 1) if prev else None
+
+    return {
+        'today': row['today'] or 0, 'yesterday': row['yesterday'] or 0,
+        'dod_pct': pct(row['today'], row['yesterday']),
+        'this_week': row['this_week'] or 0, 'last_week': row['last_week'] or 0,
+        'wow_pct': pct(row['this_week'], row['last_week']),
+        'this_month': row['this_month'] or 0, 'last_month': row['last_month'] or 0,
+        'mom_pct': pct(row['this_month'], row['last_month']),
+    }
+
+
+def get_event_analytics() -> dict:
+    """Per-event-type totals (all-time) plus D0D/W0W/M0M trend numbers for
+    total events and for each event_type actually seen — read by the
+    admin Analytics page's Events section. Deliberately NOT scoped to the
+    page's date-range filter like get_analytics()'s other sections: D0D/
+    W0W/M0M is inherently "vs right now", not a fixed window someone
+    picked."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT event_type, COUNT(*) AS n FROM events GROUP BY event_type ORDER BY n DESC"
+            )
+            totals = cur.fetchall()
+
+            overall = _period_over_period(cur, 'events', 'created_at')
+
+            by_type = {}
+            for row in totals:
+                event_type = row['event_type']
+                by_type[event_type] = {
+                    'total': row['n'],
+                    **_period_over_period(cur, 'events', 'created_at', 'event_type = %s', [event_type]),
+                }
+
+    return {
+        'event_totals': [{'event_type': r['event_type'], 'count': r['n']} for r in totals],
+        'overall': overall,
+        'by_type': by_type,
+    }
+
+
 def get_analytics(date_from: str = None, date_to: str = None) -> dict:
     """Aggregate KPIs the admin dashboard's Analytics page reads —
     conversation/turn counts, source breakdown, language breakdown,
@@ -603,6 +710,8 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             cur.execute("SELECT COUNT(*) AS n FROM conversations")
             total_convos_all_time = cur.fetchone()['n']
 
+            conversations_period = _period_over_period(cur, 'conversations', 'first_seen_at')
+
             cur.execute(
                 "SELECT category, COUNT(*) as n FROM tickets GROUP BY category ORDER BY n DESC LIMIT 8"
             )
@@ -651,4 +760,5 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
         'ticket_trend': ticket_trend,
         'open_tickets': open_tickets,
         'total_tickets': total_tickets_all_time,
+        'conversations_period': conversations_period,
     }

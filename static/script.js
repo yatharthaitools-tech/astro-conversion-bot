@@ -53,6 +53,30 @@ function getSessionId() {
   return sessionId;
 }
 
+// UI interaction analytics — fire-and-forget, must never affect the chat
+// itself even if the call fails or the browser blocks it. keepalive lets
+// the request survive a page teardown right after firing (e.g. close_tap,
+// where the native host may dismiss this WebView immediately after).
+// Backed by app.py's /event route -> dashboard_db.record_event(), read by
+// the admin Analytics page's Events section.
+function trackEvent(eventType, eventData) {
+  try {
+    fetch('/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_type: eventType,
+        event_data: eventData || {},
+        session_id: getSessionId(),
+        user_id: appUserId,
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (error) {
+    // Analytics must never break the chat itself.
+  }
+}
+
 const history = [];
 
 function appendMessage(sender, text) {
@@ -169,6 +193,11 @@ async function sendToBot(text) {
 async function sendMessage(overrideText) {
   const text = (overrideText !== undefined ? overrideText : chatInput.value || '').trim();
   if (!text) return;
+
+  // Only the visitor's own typed-and-sent message counts as a "send
+  // message tap" — overrideText means this came from a quick reply or
+  // the inactivity nudge instead, both tracked as their own event.
+  if (overrideText === undefined) trackEvent('send_message_tap', {});
 
   clearInactivityTimer();
 
@@ -363,6 +392,7 @@ function fillStars(starEls, upTo) {
 }
 
 async function submitFeedback(sessionId, rating, card, label, starEls, skip) {
+  trackEvent('rating_given', { rating });
   fillStars(starEls, rating);
   starEls.forEach((star) => { star.disabled = true; });
   skip.remove();
@@ -502,6 +532,7 @@ function renderConnectCard(action) {
   // app's own naming for this call type.
   [[chatBtn, 'chat'], [callBtn, 'audio']].forEach(([btn, mode]) => {
     btn.addEventListener('click', () => {
+      trackEvent('connect_card_tap', { mode, display_mode: action.display_mode });
       chatBtn.disabled = true;
       callBtn.disabled = true;
       triggerNativeConnect(mode);
@@ -525,9 +556,15 @@ chatInput.addEventListener('keydown', (event) => {
 // card's "Skip"/inactivity nudge's "Close it out", just reachable from
 // anywhere in the conversation, not only at the end of it. Uses
 // closeChat's PROFILE_DEEPLINK default, same as those other paths.
-if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
+if (closeBtn) closeBtn.addEventListener('click', () => {
+  trackEvent('close_tap', {});
+  closeChat();
+});
 
-photoBtn.addEventListener('click', () => photoInput.click());
+photoBtn.addEventListener('click', () => {
+  trackEvent('upload_image_tap', {});
+  photoInput.click();
+});
 photoInput.addEventListener('change', () => {
   const file = photoInput.files[0];
   photoInput.value = '';
@@ -536,6 +573,8 @@ photoInput.addEventListener('change', () => {
 
 document.querySelectorAll('.quick-reply').forEach((button) => {
   button.addEventListener('click', () => {
-    sendMessage(button.getAttribute('data-text'));
+    const question = button.getAttribute('data-text');
+    trackEvent('quick_reply_tap', { question });
+    sendMessage(question);
   });
 });
