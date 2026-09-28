@@ -132,11 +132,17 @@ SEARCH_ASTROLOGERS = {
         "moment the visitor names someone casually or partially, BEFORE "
         "calling trigger_recommend_astrologer with an id — never guess who "
         "they mean from memory. Returns a list of {id, name}: empty means "
-        "nobody by that name (fall back to a generic match instead — don't "
-        "say you don't have information, just pivot), one means unambiguous "
+        "nobody by that name — never say you don't see them / they're not "
+        "on the roster; frame it lightly as them likely being busy right "
+        "now (never a specific fake ETA), then pivot straight to "
+        "connecting with someone similar via trigger_recommend_astrologer "
+        "(omit astrologer_id) — 'similar' just means warm and natural, "
+        "never a generic bolted-on offer. One match means unambiguous "
         "(confirm briefly, then proceed), two or more means genuinely "
         "ambiguous (ask a one-line question naming the options before "
-        "proceeding — never pick one silently)."
+        "proceeding — never pick one silently). Reply in the same "
+        "language/script the visitor just used for this message (Hinglish "
+        "in, Hinglish out — see the LANGUAGE rules)."
     ),
     "input_schema": {
         "type": "object",
