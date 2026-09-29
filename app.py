@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 import uuid
@@ -16,10 +17,16 @@ from dashboard.routes import bp as dashboard_bp
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
 # Only needed for the admin dashboard's login session cookie — the main
-# chat widget itself has no session/cookie state. Falls back to a
-# per-process random key (dev-only behavior: sessions won't survive a
-# restart) rather than refusing to start when ADMIN_SESSION_SECRET isn't set.
-app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or os.urandom(32)
+# chat widget itself has no session/cookie state. A per-process random
+# key broke logins under >1 worker/pod: whichever process signed the
+# login cookie is the only one that can verify it, so a request landing
+# on a different worker looked like an instant logout. Falls back to a
+# key derived from ADMIN_PASSWORD instead — stable across every process
+# sharing that same env var, no extra config required — rather than
+# refusing to start when ADMIN_SESSION_SECRET isn't set.
+app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or hashlib.sha256(
+    f"admin-session:{os.environ.get('ADMIN_PASSWORD', '')}".encode()
+).hexdigest()
 app.register_blueprint(dashboard_bp)
 dashboard_db.init_db()
 
