@@ -42,3 +42,13 @@ def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
     if ok and ticket and ticket.get('zoho_ticket_id'):
         zoho_client.update_status(ticket['zoho_ticket_id'], status)
     return ok
+
+
+def update_ticket_assignee(ticket_id: int, admin_id) -> bool:
+    """Manual reassignment from the ticket detail page — new tickets are
+    already auto-assigned round-robin (dashboard_db.record_ticket), this
+    is just for correcting/reassigning one after the fact. admin_id may
+    be None to unassign. Local-only — Zoho Desk's own agent assignment
+    isn't wired up here (see this module's docstring: Zoho sync is push-
+    only for status, not assignment)."""
+    return dashboard_db.update_ticket_assignee(ticket_id, admin_id)

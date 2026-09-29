@@ -39,6 +39,13 @@ Schema:
         form: event_type isn't an enum here, script.js is the source of
         truth for which types actually get fired. Feeds get_event_
         analytics() below, including the D0D/W0W/M0M comparisons.
+    admin_users(id PK, email UNIQUE, password_hash, role, created_at) —
+        per-person dashboard logins (dashboard/auth.py), replacing the
+        old single shared ADMIN_PASSWORD. role is one of 'admin' /
+        'support_agent' / 'analyst' (see auth.py's ROLES).
+    dashboard_config(key PK, value) — small KV store for values that must
+        be identical across every worker/pod; today just 'session_secret'
+        (see get_or_create_session_secret below).
 
 `tool_trace` is stored as JSONB (list of {"tool": str, "ok": bool} dicts,
 exactly ctx.trace's shape) — read back for display, never queried into.
@@ -47,6 +54,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -144,6 +152,22 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS admin_users (
+    id SERIAL PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'support_agent', 'analyst')),
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+-- Single-row-per-key store for small values that must be identical across
+-- every worker/pod (see get_or_create_session_secret below) — deliberately
+-- not a bigger config system, just a KV escape hatch for this one need.
+CREATE TABLE IF NOT EXISTS dashboard_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_last_seen ON conversations(last_seen_at);
@@ -164,6 +188,10 @@ _MIGRATIONS = [
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS rated_at TIMESTAMPTZ",
     "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS zoho_ticket_id TEXT",
     "ALTER TABLE coin_credit_attempts ADD COLUMN IF NOT EXISTS purpose TEXT",
+    # admin_users doesn't exist yet when the CREATE TABLE tickets statement
+    # above runs (it's defined later in _SCHEMA), so this FK has to be
+    # added here instead, after both tables exist.
+    "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assigned_admin_id INTEGER REFERENCES admin_users(id)",
 ]
 
 
@@ -364,6 +392,30 @@ def get_conversation(session_id: str) -> dict:
 
 # --- Tickets -----------------------------------------------------------
 
+def _pick_round_robin_assignee(cur) -> int:
+    """Whoever can actually work a ticket (admin or support_agent) AND has
+    gone longest without a new one — a teammate with zero tickets yet
+    (NULL last-assigned) always comes before anyone with a real history,
+    so a newly-added agent gets pulled into rotation immediately instead
+    of starting at the back of the line. Returns None if there's nobody
+    eligible yet (e.g. a fresh install with only an analyst so far) —
+    callers leave assigned_admin_id NULL in that case, same as an
+    unassigned ticket always looked before this existed."""
+    cur.execute(
+        """SELECT au.id FROM admin_users au
+           LEFT JOIN (
+               SELECT assigned_admin_id, MAX(created_at) AS last_assigned
+               FROM tickets WHERE assigned_admin_id IS NOT NULL
+               GROUP BY assigned_admin_id
+           ) t ON t.assigned_admin_id = au.id
+           WHERE au.role IN ('admin', 'support_agent')
+           ORDER BY t.last_assigned ASC NULLS FIRST, au.id ASC
+           LIMIT 1"""
+    )
+    row = cur.fetchone()
+    return row['id'] if row else None
+
+
 def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
                    sub_category: str, description: str, evidence_url: str, ltv_tier: str,
                    zoho_ticket_id: str = None) -> None:
@@ -371,12 +423,15 @@ def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
+                assignee_id = _pick_round_robin_assignee(cur)
                 cur.execute(
                     """INSERT INTO tickets (ticket_ref, session_id, user_id, category, sub_category,
-                                             description, evidence_url, ltv_tier, status, created_at, zoho_ticket_id)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Open', %s, %s)
+                                             description, evidence_url, ltv_tier, status, created_at,
+                                             zoho_ticket_id, assigned_admin_id)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Open', %s, %s, %s)
                        RETURNING id""",
-                    (ticket_ref, session_id, user_id, category, sub_category, description, evidence_url, ltv_tier, now, zoho_ticket_id),
+                    (ticket_ref, session_id, user_id, category, sub_category, description,
+                     evidence_url, ltv_tier, now, zoho_ticket_id, assignee_id),
                 )
                 ticket_id = cur.fetchone()['id']
                 cur.execute(
@@ -385,6 +440,14 @@ def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
                 )
     except psycopg2.Error:
         logger.warning("record_ticket failed for ticket %s", ticket_ref, exc_info=True)
+
+
+def update_ticket_assignee(ticket_id: int, admin_id: int) -> bool:
+    """admin_id may be None to explicitly unassign."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE tickets SET assigned_admin_id = %s WHERE id = %s", (admin_id, ticket_id))
+            return cur.rowcount > 0
 
 
 TICKET_STATUSES = ["Open", "In Progress", "Resolved", "Closed"]
@@ -404,22 +467,31 @@ def list_tickets_for_user(user_id: str, limit: int = 20) -> list:
 
 
 def list_tickets(limit: int = 50, offset: int = 0, status: str = None,
-                  category: str = None, date_from: str = None, date_to: str = None) -> list:
-    query = "SELECT * FROM tickets WHERE 1=1"
+                  category: str = None, date_from: str = None, date_to: str = None,
+                  assigned_admin_id=None) -> list:
+    query = (
+        "SELECT t.*, au.email AS assigned_admin_email FROM tickets t "
+        "LEFT JOIN admin_users au ON au.id = t.assigned_admin_id WHERE 1=1"
+    )
     params = []
     if status:
-        query += " AND status = %s"
+        query += " AND t.status = %s"
         params.append(status)
     if category:
-        query += " AND category = %s"
+        query += " AND t.category = %s"
         params.append(category)
     if date_from:
-        query += " AND created_at >= %s"
+        query += " AND t.created_at >= %s"
         params.append(date_from)
     if date_to:
-        query += " AND created_at <= %s"
+        query += " AND t.created_at <= %s"
         params.append(date_to + "T23:59:59")
-    query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+    if assigned_admin_id == 'unassigned':
+        query += " AND t.assigned_admin_id IS NULL"
+    elif assigned_admin_id:
+        query += " AND t.assigned_admin_id = %s"
+        params.append(assigned_admin_id)
+    query += " ORDER BY t.created_at DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -427,15 +499,21 @@ def list_tickets(limit: int = 50, offset: int = 0, status: str = None,
             return [_to_dict(r) for r in cur.fetchall()]
 
 
-def count_tickets(status: str = None, category: str = None, date_from: str = None, date_to: str = None) -> int:
-    query = "SELECT COUNT(*) AS n FROM tickets WHERE 1=1"
+def count_tickets(status: str = None, category: str = None, date_from: str = None, date_to: str = None,
+                   assigned_admin_id=None) -> int:
+    query = "SELECT COUNT(*) AS n FROM tickets t WHERE 1=1"
     params = []
     if status:
-        query += " AND status = %s"
+        query += " AND t.status = %s"
         params.append(status)
     if category:
-        query += " AND category = %s"
+        query += " AND t.category = %s"
         params.append(category)
+    if assigned_admin_id == 'unassigned':
+        query += " AND t.assigned_admin_id IS NULL"
+    elif assigned_admin_id:
+        query += " AND t.assigned_admin_id = %s"
+        params.append(assigned_admin_id)
     if date_from:
         query += " AND created_at >= %s"
         params.append(date_from)
@@ -451,7 +529,11 @@ def count_tickets(status: str = None, category: str = None, date_from: str = Non
 def get_ticket(ticket_id: int) -> dict:
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM tickets WHERE id = %s", (ticket_id,))
+            cur.execute(
+                "SELECT t.*, au.email AS assigned_admin_email FROM tickets t "
+                "LEFT JOIN admin_users au ON au.id = t.assigned_admin_id WHERE t.id = %s",
+                (ticket_id,),
+            )
             ticket = cur.fetchone()
             if not ticket:
                 return None
@@ -762,3 +844,111 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
         'total_tickets': total_tickets_all_time,
         'conversations_period': conversations_period,
     }
+
+
+# --- Admin users (email/password + RBAC) ---------------------------------
+
+def create_admin_user(email: str, password_hash: str, role: str) -> dict:
+    """Returns the new row, or None if that email is already taken (a
+    UNIQUE-violation, not an exception — callers show a friendly 'already
+    exists' message instead of a 500)."""
+    email = email.strip().lower()
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO admin_users (email, password_hash, role, created_at)
+                       VALUES (%s, %s, %s, %s) RETURNING *""",
+                    (email, password_hash, role, _now()),
+                )
+                return _to_dict(cur.fetchone())
+    except psycopg2.errors.UniqueViolation:
+        return None
+
+
+def get_admin_user_by_email(email: str) -> dict:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM admin_users WHERE email = %s", (email.strip().lower(),))
+            return _to_dict(cur.fetchone())
+
+
+def get_admin_user_by_id(user_id: int) -> dict:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM admin_users WHERE id = %s", (user_id,))
+            return _to_dict(cur.fetchone())
+
+
+def list_admin_users() -> list:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM admin_users ORDER BY created_at ASC")
+            return [_to_dict(r) for r in cur.fetchall()]
+
+
+def list_assignable_admins() -> list:
+    """Who a ticket can actually be assigned to — the same eligibility
+    _pick_round_robin_assignee uses, for the tickets filter dropdown and
+    the ticket detail reassignment form."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM admin_users WHERE role IN ('admin', 'support_agent') ORDER BY email ASC"
+            )
+            return [_to_dict(r) for r in cur.fetchall()]
+
+
+def count_admin_users(role: str = None) -> int:
+    query = "SELECT COUNT(*) AS n FROM admin_users"
+    params = []
+    if role:
+        query += " WHERE role = %s"
+        params.append(role)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return cur.fetchone()['n']
+
+
+def update_admin_user_role(user_id: int, role: str) -> bool:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE admin_users SET role = %s WHERE id = %s", (role, user_id))
+            return cur.rowcount > 0
+
+
+def delete_admin_user(user_id: int) -> bool:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM admin_users WHERE id = %s", (user_id,))
+            return cur.rowcount > 0
+
+
+# --- Cross-process shared config ------------------------------------------
+
+def get_or_create_session_secret() -> str:
+    """A Flask secret_key that's identical across every worker/pod without
+    needing an env var set anywhere — generated once (32 random bytes,
+    hex-encoded) and persisted here, so it survives restarts/redeploys and
+    is the same value everywhere Postgres is. Without this, each process
+    fell back to its own random key, which broke the admin session cookie
+    the moment a request landed on a different worker than the one that
+    signed it (looked like a random logout on every click)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM dashboard_config WHERE key = 'session_secret'")
+            row = cur.fetchone()
+            if row:
+                return row['value']
+            cur.execute(
+                """INSERT INTO dashboard_config (key, value) VALUES ('session_secret', %s)
+                   ON CONFLICT (key) DO NOTHING""",
+                (secrets.token_hex(32),),
+            )
+    # Re-read rather than trust the value just generated — a concurrent
+    # worker doing this same race at startup may have won the insert.
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM dashboard_config WHERE key = 'session_secret'")
+            return cur.fetchone()['value']

@@ -19,7 +19,10 @@ even save). Check these against your actual Zoho Desk Category/Sub Issue
 picklists before going live, and don't reuse AstroHelp's own
 ZOHO_DEPARTMENT_ID as-is — that's its astrologer-support queue; visitor
 tickets from this bot belong in a separate department/queue, or they'll
-land mixed in with astrologer complaints.
+land mixed in with astrologer complaints. Same caveat applies to
+create_ticket's customFields keys (cf_user_id, cf_ltv_tier) — those API
+names must match custom fields that actually exist on the portal's
+ticket layout, or Zoho rejects the whole request.
 """
 import logging
 import os
@@ -121,6 +124,18 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
             # needed for its own chatbot-raised tickets).
             "channel": "Chat",
             "contact": {"lastName": f"AstroLokal visitor {user_id}"},
+            # Structured, not just embedded in the subject/contact name
+            # above, so CS can actually filter/search on these in Zoho
+            # rather than parsing free text — cf_user_id/cf_ltv_tier are
+            # placeholder custom-field API names, same "verify against
+            # your real Zoho Desk portal first" caveat as the module
+            # docstring's category-map warning: these fields must exist
+            # on the portal's ticket layout before a real (non-mock) call
+            # will succeed.
+            "customFields": {
+                "cf_user_id": user_id,
+                "cf_ltv_tier": ltv_tier or "unranked",
+            },
         }
         if evidence_url:
             payload["description"] = f"{description}\n\nEvidence: {evidence_url}"

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Not authorized — AstroLokal Admin{% endblock %}
+{% block content %}
+<h1>Not authorized</h1>
+<p>{{ message or "Your role doesn't have access to this page." }}</p>
+<a href="{{ url_for('dashboard.conversations') }}" class="back-link">&larr; Back to Conversations</a>
+{% endblock %}

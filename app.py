@@ -1,4 +1,3 @@
-import hashlib
 import os
 import re
 import uuid
@@ -11,24 +10,28 @@ load_dotenv()
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
 from integrations import recommend_flow_client, s3_client
+from dashboard import auth as dashboard_auth
 from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
-# Only needed for the admin dashboard's login session cookie — the main
-# chat widget itself has no session/cookie state. A per-process random
-# key broke logins under >1 worker/pod: whichever process signed the
-# login cookie is the only one that can verify it, so a request landing
-# on a different worker looked like an instant logout. Falls back to a
-# key derived from ADMIN_PASSWORD instead — stable across every process
-# sharing that same env var, no extra config required — rather than
-# refusing to start when ADMIN_SESSION_SECRET isn't set.
-app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or hashlib.sha256(
-    f"admin-session:{os.environ.get('ADMIN_PASSWORD', '')}".encode()
-).hexdigest()
 app.register_blueprint(dashboard_bp)
 dashboard_db.init_db()
+# admin_users/dashboard_config must exist first (init_db above), and the
+# secret needs the table too — hence this order. Only needed for the
+# admin dashboard's login session cookie — the main chat widget itself
+# has no session/cookie state. A per-process random key broke logins
+# under >1 worker/pod: whichever process signed the login cookie was the
+# only one that could verify it, so a request landing on a different
+# worker looked like an instant logout. get_or_create_session_secret
+# fixes that at the root — a real random value generated once and shared
+# via Postgres, not derived from anything else — rather than refusing to
+# start when ADMIN_SESSION_SECRET isn't set.
+app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or dashboard_db.get_or_create_session_secret()
+# Seeds the first admin_users row from ADMIN_EMAIL/ADMIN_PASSWORD — a
+# no-op once any account exists, see dashboard/auth.py's bootstrap().
+dashboard_auth.bootstrap()
 
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
 ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}

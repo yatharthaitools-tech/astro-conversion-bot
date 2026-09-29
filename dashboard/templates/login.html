@@ -5,7 +5,8 @@
   <form method="post" class="login-card">
     <div class="login-brand">AstroLokal <span>Admin</span></div>
     {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
-    <input type="password" name="password" placeholder="Admin password" autofocus required class="login-input" />
+    <input type="email" name="email" placeholder="Email" autofocus required class="login-input" />
+    <input type="password" name="password" placeholder="Password" required class="login-input" />
     <button type="submit" class="login-btn">Log in</button>
   </form>
 </div>

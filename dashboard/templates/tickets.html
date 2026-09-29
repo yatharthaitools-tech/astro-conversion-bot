@@ -16,6 +16,13 @@
       <option value="{{ c }}" {{ 'selected' if filters.category == c }}>{{ c }}</option>
     {% endfor %}
   </select>
+  <select name="assigned">
+    <option value="" {{ 'selected' if not filters.assigned }}>Anyone</option>
+    <option value="unassigned" {{ 'selected' if filters.assigned == 'unassigned' }}>Unassigned</option>
+    {% for a in assignable_admins %}
+      <option value="{{ a.id }}" {{ 'selected' if filters.assigned == a.id|string }}>{{ a.email }}</option>
+    {% endfor %}
+  </select>
   <input type="date" name="from" value="{{ filters.from }}" />
   <input type="date" name="to" value="{{ filters.to }}" />
   <button type="submit">Filter</button>
@@ -31,6 +38,7 @@
         <th>Category</th>
         <th>Issue</th>
         <th>Status</th>
+        <th>Assigned to</th>
         <th>Created</th>
       </tr>
     </thead>
@@ -42,10 +50,11 @@
         <td>{{ t.category }}<div class="table-subtext">{{ t.sub_category or '' }}</div></td>
         <td class="truncate">{{ t.description }}</td>
         <td><span class="status-pill status-{{ t.status|lower|replace(' ', '-') }}">{{ t.status }}</span></td>
+        <td>{{ t.assigned_admin_email or '—' }}</td>
         <td>{{ t.created_at[:16].replace('T', ' ') }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="empty-state">No tickets yet.</td></tr>
+      <tr><td colspan="7" class="empty-state">No tickets yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -54,7 +63,7 @@
 {% if total_pages > 1 %}
 <div class="pagination">
   {% for p in range(1, total_pages + 1) %}
-    <a href="?page={{ p }}&status={{ filters.status }}&category={{ filters.category }}&from={{ filters.from }}&to={{ filters.to }}"
+    <a href="?page={{ p }}&status={{ filters.status }}&category={{ filters.category }}&from={{ filters.from }}&to={{ filters.to }}&assigned={{ filters.assigned }}"
        class="{{ 'active' if p == page }}">{{ p }}</a>
   {% endfor %}
 </div>
