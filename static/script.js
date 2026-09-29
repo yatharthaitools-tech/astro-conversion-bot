@@ -13,10 +13,6 @@ const closeBtn = document.getElementById('closeBtn');
 // center portrait, see the crop this file was generated from).
 const TARA_AVATAR_IMG = '<img src="/static/avatars/tara-avatar.png" alt="" />';
 
-// A connect card showing up every single turn reads as spammy — require
-// at least one turn's gap since the last one before showing another.
-let turnsSinceLastCard = Infinity;
-
 // Nudges a visitor who's gone quiet mid-conversation instead of just
 // leaving the chat sitting open with no signal either way. Armed after
 // each bot reply, cleared on any new activity (sending a message, or the
@@ -210,14 +206,12 @@ async function sendToBot(text) {
     appendMessage('bot', answer);
     hasStartedConversation = true;
 
-    turnsSinceLastCard += 1;
     if (data.action && data.action.type === 'connect_popup') {
-      if (turnsSinceLastCard >= 2) {
-        renderConnectCard(data.action);
-        turnsSinceLastCard = 0;
-      }
-      // Otherwise: a card was just shown last turn — the reply text still
-      // carries the offer, but we don't repeat the same card back-to-back.
+      // Always render when triggered — the model is required to only
+      // reference "tap below"/"connect you" text in the same turn it
+      // actually calls trigger_recommend_astrologer, so suppressing the
+      // card here would leave that text dangling with nothing below it.
+      renderConnectCard(data.action);
     } else if (data.action && data.action.type === 'free_coins_bottomsheet') {
       // Free-coins UI lives entirely in-chat — the real native app has
       // no bottomsheet action to hand this to (its bridge only supports
@@ -232,7 +226,6 @@ async function sendToBot(text) {
           display_mode: data.action.connect.display_mode,
           astrologer: data.action.connect.astrologer,
         });
-        turnsSinceLastCard = 0;
       }
     }
 

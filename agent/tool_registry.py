@@ -184,8 +184,11 @@ def _handle_get_app_faq(safe_input, ctx):
 
 
 REGISTRY = {
-    "get_payment_status": _handle_get_payment_status,
-    "get_booking_details": _handle_get_booking_details,
+    # "get_payment_status": _handle_get_payment_status,
+    # "get_booking_details": _handle_get_booking_details,
+    # "get_wallet_status": _handle_get_wallet_status,
+    # "get_queue_position": _handle_get_queue_position, -- deliberately
+    # not registered right now, see tool_schemas.py's ALL_TOOLS comment.
     # "check_refund_eligibility": _handle_check_refund_eligibility, and
     # "credit_coins": _handle_credit_coins, -- deliberately not
     # registered right now, see tool_schemas.py's ALL_TOOLS comment.
@@ -198,9 +201,7 @@ REGISTRY = {
     "log_feature_request": _handle_log_feature_request,
     "mark_issue_resolved": _handle_mark_issue_resolved,
     "get_tickets": _handle_get_tickets,
-    "get_wallet_status": _handle_get_wallet_status,
     # "get_active_offers": _handle_get_active_offers, -- deliberately not
     # registered right now, see tool_schemas.py's ALL_TOOLS comment.
-    "get_queue_position": _handle_get_queue_position,
     "get_app_faq": _handle_get_app_faq,
 }

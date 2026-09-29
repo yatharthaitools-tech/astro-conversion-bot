@@ -16,27 +16,26 @@ for the model to fill in even if it wanted to, same reasoning as AstroHelp's
 tool schemas never carrying an astrologer_id field.
 """
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 GET_PAYMENT_STATUS = {
     "name": "get_payment_status",
     "description": (
-        "Checks the visitor's most recent recharge/payment attempt — status "
-        "(success/pending/failed), coins added, and order timestamp. Always "
-        "call this before answering 'I recharged but coins weren't added' "
-        "rather than guessing. If the payment failed, real provider refunds "
-        "take 5-7 days — state that plainly rather than promising a faster "
-        "fix."
+        "PAUSED — see create_support_ticket's note on why this and the "
+        "other visibility-into-a-specific-payment/booking/wallet tools "
+        "are disabled right now."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 GET_BOOKING_DETAILS = {
     "name": "get_booking_details",
     "description": (
-        "Fetches a specific booking's real status: duration, coins "
-        "deducted, astrologer response count, and end reason. Omit "
-        "booking_id to get the visitor's most recent booking. Always call "
-        "this before discussing a refund/duration dispute or 'astrologer "
-        "took too long' — never estimate what happened in a session."
+        "PAUSED — see create_support_ticket's note on why this and the "
+        "other visibility-into-a-specific-payment/booking/wallet tools "
+        "are disabled right now."
     ),
     "input_schema": {
         "type": "object",
@@ -133,11 +132,17 @@ SEARCH_ASTROLOGERS = {
         "moment the visitor names someone casually or partially, BEFORE "
         "calling trigger_recommend_astrologer with an id — never guess who "
         "they mean from memory. Returns a list of {id, name}: empty means "
-        "nobody by that name (fall back to a generic match instead — don't "
-        "say you don't have information, just pivot), one means unambiguous "
+        "nobody by that name — never say you don't see them / they're not "
+        "on the roster; frame it lightly as them likely being busy right "
+        "now (never a specific fake ETA), then pivot straight to "
+        "connecting with someone similar via trigger_recommend_astrologer "
+        "(omit astrologer_id) — 'similar' just means warm and natural, "
+        "never a generic bolted-on offer. One match means unambiguous "
         "(confirm briefly, then proceed), two or more means genuinely "
         "ambiguous (ask a one-line question naming the options before "
-        "proceeding — never pick one silently)."
+        "proceeding — never pick one silently). Reply in the same "
+        "language/script the visitor just used for this message (Hinglish "
+        "in, Hinglish out — see the LANGUAGE rules)."
     ),
     "input_schema": {
         "type": "object",
@@ -187,7 +192,19 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
         "isn't available right now, so never state a specific offer, "
         "percentage or code. Instead pivot to connecting them with a "
         "quality astrologer at a discounted price, framed as exclusive to "
-        "them (e.g. 'a discount just for you'), and call this tool."
+        "them (e.g. 'a discount just for you'), and call this tool.\n\n"
+        "ALSO the pivot for a payment/wallet/coins/queue question you "
+        "can't actually check (see create_support_ticket's note — those "
+        "tools are paused), or a question asking for a specific "
+        "astrologer's own stats/rating/experience/availability detail you "
+        "don't have real data for. Don't dwell on what you can't confirm "
+        "or answer around it — acknowledge briefly and naturally, then "
+        "move the conversation toward connecting them with someone great "
+        "right now. Keep it warm and conversational, not a reflexive "
+        "'want me to connect you?' bolted onto the end — e.g. 'Can't "
+        "pull that up on my side, but let's get you talking to someone "
+        "who can actually help' rather than just offering a card after "
+        "stating you don't know."
     ),
     "input_schema": {
         "type": "object",
@@ -300,6 +317,25 @@ CREATE_SUPPORT_TICKET = {
         "connect option in text without also calling trigger_recommend_"
         "astrologer in the same turn; the card has to actually be there "
         "whenever you reference it.\n\n"
+        "ALSO TEMPORARY — no real-time payment/wallet/booking visibility: "
+        "get_payment_status, get_booking_details, get_wallet_status and "
+        "get_queue_position are ALL disabled too. You only ever have the "
+        "visitor's user_id and, when verified, their name — nothing about "
+        "a specific recharge, booking, coin balance or queue position. "
+        "NEVER invent or estimate one of these ('your payment is "
+        "pending', 'your balance is actually X', 'you're 3rd in queue') — "
+        "a number that doesn't match what they see in their own app is "
+        "worse than no answer, and is exactly what erodes trust. For a "
+        "genuine dispute (coins wrongly deducted, payment failed but "
+        "money gone, a booking that went wrong), call this tool with "
+        "category='payment' or 'billing_dispute' so the team who can "
+        "actually see the real data checks it — same apologize-once, "
+        "raise-the-ticket, pivot-to-connect pattern as above. For a "
+        "plain informational ask with no real problem behind it ('what's "
+        "my balance', 'how long is the wait', 'is my recharge done') — "
+        "skip the ticket, just don't state a number, and warmly steer "
+        "toward connecting them with a top astrologer instead (see "
+        "trigger_recommend_astrologer).\n\n"
         "Use 'account' for a delete-account "
         "request once you've asked why and it isn't something you can fix "
         "in this chat — never claim the account was deleted, only that "
@@ -404,19 +440,14 @@ GET_TICKETS = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 GET_WALLET_STATUS = {
     "name": "get_wallet_status",
     "description": (
-        "Checks the visitor's real current coin balance and whether "
-        "anything was actually deducted recently. Use this for a 'my "
-        "coins keep going down' / 'coins missing' complaint that ISN'T "
-        "about one specific booking — if nothing was really deducted, "
-        "explain the balance is safe rather than offering a credit. "
-        "credit_coins is disabled for now — if a real deduction here is "
-        "what the visitor's disputing, don't offer a credit yourself; "
-        "call create_support_ticket (category='refund') and offer to "
-        "connect them with a top astrologer via trigger_recommend_"
-        "astrologer instead."
+        "PAUSED — see create_support_ticket's note on why this and the "
+        "other visibility-into-a-specific-payment/booking/wallet tools "
+        "are disabled right now."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
@@ -434,14 +465,14 @@ GET_ACTIVE_OFFERS = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+# Deliberately not in ALL_TOOLS right now — see the comment there.
+# Kept defined so re-enabling is a one-line change.
 GET_QUEUE_POSITION = {
     "name": "get_queue_position",
     "description": (
-        "Checks the visitor's real position and estimated wait in an "
-        "astrologer's live queue. Use this for 'how long is the wait' "
-        "questions — never estimate a wait time yourself. A long queue is "
-        "also a good natural moment to offer a live available alternative "
-        "via trigger_recommend_astrologer."
+        "PAUSED — see create_support_ticket's note on why this and the "
+        "other visibility-into-a-specific-payment/booking/wallet tools "
+        "are disabled right now."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
@@ -467,8 +498,18 @@ GET_APP_FAQ = {
 }
 
 ALL_TOOLS = [
-    GET_PAYMENT_STATUS,
-    GET_BOOKING_DETAILS,
+    # GET_PAYMENT_STATUS, GET_BOOKING_DETAILS, GET_WALLET_STATUS and
+    # GET_QUEUE_POSITION deliberately NOT registered for now — none of
+    # them are real: SessionContext only ever carries user_id and,
+    # when verified, user_name (see agent/context.py), so these were
+    # always mocked stand-ins presented as if real, which is exactly what
+    # VOC testing flagged as an active-distrust risk (a stated balance/
+    # status that contradicts what the visitor actually sees in the app).
+    # Any payment/wallet/booking/queue question routes through
+    # CREATE_SUPPORT_TICKET (genuine dispute) or straight to
+    # TRIGGER_RECOMMEND_ASTROLOGER (plain informational ask) instead —
+    # see CREATE_SUPPORT_TICKET's own description. Schemas/handlers/mock
+    # data stay in place, ready to re-enable once real data exists.
     # CHECK_REFUND_ELIGIBILITY and CREDIT_COINS deliberately NOT
     # registered for now — coin credits of any kind are paused. Any
     # refund/credit-worthy complaint routes through CREATE_SUPPORT_
@@ -484,11 +525,9 @@ ALL_TOOLS = [
     LOG_FEATURE_REQUEST,
     MARK_ISSUE_RESOLVED,
     GET_TICKETS,
-    GET_WALLET_STATUS,
     # GET_ACTIVE_OFFERS deliberately NOT registered for now — offers/
     # discount questions are routed through TRIGGER_RECOMMEND_ASTROLOGER's
     # "connect at a discount" framing instead (see its description). The
     # schema/handler/mock data stay in place, ready to re-enable.
-    GET_QUEUE_POSITION,
     GET_APP_FAQ,
 ]
