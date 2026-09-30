@@ -159,6 +159,23 @@ button, input { font: inherit; }
   border-bottom-left-radius: 6px;
   box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
 }
+/* A real human agent's reply, synced in from Zoho (#3) — visually
+   distinct from Tara's own bubble so it's obvious a person, not the bot,
+   is now talking; a small label sits above it instead of an avatar. */
+.message.agent {
+  background: #eef6f2;
+  border: 1px solid rgba(46, 139, 87, 0.25);
+  color: var(--ink);
+  border-bottom-left-radius: 6px;
+  box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
+}
+.agent-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #2e8b57;
+  margin: 2px 0 4px 2px;
+  align-self: flex-start;
+}
 
 /* Bot replies (plain text + the typing indicator) sit in a row next to
    a small Tara avatar — reads as "someone" replying, not a wall of

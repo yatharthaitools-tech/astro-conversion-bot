@@ -445,6 +445,39 @@ GET_TICKETS = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
+REOPEN_TICKET = {
+    "name": "reopen_ticket",
+    "description": (
+        "Call this when the visitor says a past issue isn't actually "
+        "fixed / is still happening / 'you closed this but it's still "
+        "broken' — NOT for a brand-new complaint (use create_support_"
+        "ticket for that). Always acts on their own most recent Resolved/"
+        "Closed ticket automatically — there's no ticket_id field, never "
+        "ask them for one. Real rule, enforced server-side, not "
+        "something you decide: only reopens if that ticket was resolved "
+        "within the last 72 hours. Check the result's `reopened` field:\n"
+        "- true: tell them plainly it's reopened and being looked at "
+        "again — treat it exactly like a fresh escalation from here "
+        "(e.g. still offer to connect them with an astrologer while it's "
+        "looked at, same as create_support_ticket's own pattern).\n"
+        "- false with reason='past_reopen_window': it's been too long to "
+        "reopen — apologize briefly, then call create_support_ticket "
+        "for a NEW ticket instead (never claim the old one reopened).\n"
+        "- false with reason='no_resolved_ticket': they don't have a "
+        "resolved/closed ticket to reopen at all — this is probably a "
+        "new issue, treat it as one (create_support_ticket)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": "One-line factual summary of what they said is still wrong, for the audit trail.",
+            }
+        },
+    },
+}
+
 # Deliberately not in ALL_TOOLS right now — see the comment there.
 # Kept defined so re-enabling is a one-line change.
 GET_WALLET_STATUS = {
@@ -530,6 +563,7 @@ ALL_TOOLS = [
     LOG_FEATURE_REQUEST,
     MARK_ISSUE_RESOLVED,
     GET_TICKETS,
+    REOPEN_TICKET,
     # GET_ACTIVE_OFFERS deliberately NOT registered for now — offers/
     # discount questions are routed through TRIGGER_RECOMMEND_ASTROLOGER's
     # "connect at a discount" framing instead (see its description). The

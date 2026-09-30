@@ -21,6 +21,59 @@ const INACTIVITY_MS = 20000;
 let inactivityTimer = null;
 let hasStartedConversation = false;
 
+// #3: once a ticket exists for this session, a real Zoho agent might
+// reply — poll for that so it shows up in THIS chat window instead of
+// the visitor needing a separate channel. Starts the moment /ask first
+// reports ticket_raised (see sendToBot below) and never turns back off
+// mid-session (a resolved ticket could still get a closing note) —
+// stopped only when the chat itself closes.
+const AGENT_POLL_MS = 8000;
+let hasOpenTicket = false;
+let agentPollTimer = null;
+let agentMessagesSince = null;
+
+function appendAgentMessage(text) {
+  const row = document.createElement('div');
+  row.className = 'message-row agent-row';
+  row.style.flexDirection = 'column';
+  row.style.alignItems = 'flex-start';
+  const label = document.createElement('div');
+  label.className = 'agent-label';
+  label.textContent = 'AstroLokal Support';
+  const msg = document.createElement('div');
+  msg.className = 'message agent';
+  msg.textContent = text;
+  row.appendChild(label);
+  row.appendChild(msg);
+  chatBody.appendChild(row);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+async function pollAgentMessages() {
+  try {
+    const params = agentMessagesSince ? `?since=${encodeURIComponent(agentMessagesSince)}` : '';
+    const response = await fetch(`/conversations/${getSessionId()}/agent-messages${params}`);
+    const data = await response.json();
+    for (const m of data.messages || []) {
+      appendAgentMessage(m.text);
+      agentMessagesSince = m.created_at;
+    }
+  } catch (error) {
+    // Best-effort — a failed poll just tries again next interval.
+  }
+}
+
+function startAgentMessagePolling() {
+  if (agentPollTimer) return;
+  agentMessagesSince = new Date().toISOString();
+  agentPollTimer = setInterval(pollAgentMessages, AGENT_POLL_MS);
+}
+
+function stopAgentMessagePolling() {
+  if (agentPollTimer) clearInterval(agentPollTimer);
+  agentPollTimer = null;
+}
+
 function armInactivityTimer() {
   clearInactivityTimer();
   if (!hasStartedConversation || chatInput.disabled) return;
@@ -231,6 +284,11 @@ async function sendToBot(text) {
           astrologer: data.action.connect.astrologer,
         });
       }
+    }
+
+    if (data.ticket_raised && !hasOpenTicket) {
+      hasOpenTicket = true;
+      startAgentMessagePolling();
     }
 
     if (data.show_feedback) {
@@ -496,6 +554,7 @@ const PROFILE_DEEPLINK = 'astrolokal://BottomTabs?screen=Profile';
 // same action, native can tell them apart.
 function closeChat(deeplink = PROFILE_DEEPLINK) {
   clearInactivityTimer();
+  stopAgentMessagePolling();
   sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
   // Session-lifecycle pair with consulation_started above — fired from
   // here (not a specific button) since this is the one place the chat

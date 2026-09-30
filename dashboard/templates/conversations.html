@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Conversations — AstroLokal Admin{% endblock %}
 {% block content %}
-<h1>Conversations</h1>
+<div class="page-header-row">
+  <h1>Conversations</h1>
+  <a href="{{ url_for('dashboard.export_conversations_csv', **filters) }}" class="filter-clear">Export CSV &darr;</a>
+</div>
 
 <form method="get" class="filter-bar">
   <input type="date" name="from" value="{{ filters.from }}" placeholder="From" />

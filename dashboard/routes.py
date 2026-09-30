@@ -14,7 +14,10 @@ including updating status/assignment, but not Analytics or Users;
 both here (role_required / inline checks) and in the templates (so a
 role that can't act doesn't even see the control).
 """
-from flask import Blueprint, redirect, render_template, request, url_for
+import csv
+import io
+
+from flask import Blueprint, Response, redirect, render_template, request, url_for
 
 from dashboard import auth, db, health
 from services import ticket_service
@@ -116,25 +119,25 @@ def analytics():
     )
 
 
+def _ticket_filters_from_request():
+    return {
+        'status': request.args.get('status') or None,
+        'category': request.args.get('category') or None,
+        'date_from': request.args.get('from') or None,
+        'date_to': request.args.get('to') or None,
+        'assigned_admin_id': request.args.get('assigned') or None,
+        'language': request.args.get('language') or None,
+    }
+
+
 @bp.route('/tickets')
 @auth.admin_required
 def tickets():
     page = max(1, request.args.get('page', 1, type=int))
-    status = request.args.get('status') or None
-    category = request.args.get('category') or None
-    date_from = request.args.get('from') or None
-    date_to = request.args.get('to') or None
-    assigned = request.args.get('assigned') or None
+    filters = _ticket_filters_from_request()
 
-    rows = db.list_tickets(
-        limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE,
-        status=status, category=category, date_from=date_from, date_to=date_to,
-        assigned_admin_id=assigned,
-    )
-    total = db.count_tickets(
-        status=status, category=category, date_from=date_from, date_to=date_to,
-        assigned_admin_id=assigned,
-    )
+    rows = db.list_tickets(limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE, **filters)
+    total = db.count_tickets(**filters)
 
     return render_template(
         'tickets.html',
@@ -144,11 +147,87 @@ def tickets():
         total=total,
         statuses=db.TICKET_STATUSES,
         assignable_admins=db.list_assignable_admins(),
+        language_codes=db.LANGUAGE_CODES,
         filters={
-            'status': status or '', 'category': category or '',
-            'from': date_from or '', 'to': date_to or '', 'assigned': assigned or '',
+            'status': filters['status'] or '', 'category': filters['category'] or '',
+            'from': filters['date_from'] or '', 'to': filters['date_to'] or '',
+            'assigned': filters['assigned_admin_id'] or '', 'language': filters['language'] or '',
         },
         show_nav=True, active='tickets',
+    )
+
+
+@bp.route('/tickets/bulk-reassign', methods=['POST'])
+@auth.role_required('admin')
+def bulk_reassign_tickets():
+    """#4: reassign everything off/onto someone in one shot — e.g. an
+    agent going on leave. Admin-only (unlike the per-ticket reassign
+    dropdown, which Support Agents can also use) since this can move a
+    large chunk of the queue at once."""
+    ticket_ids = [int(t) for t in request.form.getlist('ticket_ids') if t.isdigit()]
+    raw_admin_id = request.form.get('assigned_admin_id') or ''
+    admin_id = int(raw_admin_id) if raw_admin_id else None
+    if ticket_ids:
+        db.bulk_update_ticket_assignee(ticket_ids, admin_id)
+    # The tickets page embeds its current filters as hidden fields in this
+    # same form (see tickets.html) so a bulk reassign lands back on the
+    # same filtered view instead of resetting to an unfiltered list.
+    redirect_args = {
+        k: request.form.get(k) for k in ('status', 'category', 'from', 'to', 'assigned', 'language', 'page')
+        if request.form.get(k)
+    }
+    return redirect(url_for('dashboard.tickets', **redirect_args))
+
+
+@bp.route('/tickets/export.csv')
+@auth.admin_required
+def export_tickets_csv():
+    """#7 — exports whatever the current filters show, same filter logic
+    as the tickets() list view itself (not a separate unfiltered dump)."""
+    filters = _ticket_filters_from_request()
+    rows = db.list_tickets(limit=100000, offset=0, **filters)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        'Ticket', 'User', 'Category', 'Sub-category', 'Description', 'Status',
+        'Language', 'Assigned To', 'LTV Tier', 'Created', 'Resolved',
+    ])
+    for t in rows:
+        writer.writerow([
+            t['ticket_ref'], t['user_id'], t['category'], t.get('sub_category') or '',
+            t.get('description') or '', t['status'], t.get('language') or '',
+            t.get('assigned_admin_email') or '', t.get('ltv_tier') or '',
+            t['created_at'], t.get('resolved_at') or '',
+        ])
+    return Response(
+        buffer.getvalue(), mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=tickets.csv'},
+    )
+
+
+@bp.route('/conversations/export.csv')
+@auth.admin_required
+def export_conversations_csv():
+    language = request.args.get('language') or None
+    date_from = request.args.get('from') or None
+    date_to = request.args.get('to') or None
+    rows = db.list_conversations(limit=100000, offset=0, language=language, date_from=date_from, date_to=date_to)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        'Session', 'User', 'Language', 'Turns', 'Resolved By', 'Rating', 'First Seen', 'Last Seen',
+    ])
+    for c in rows:
+        writer.writerow([
+            c['session_id'], c['user_id'], c.get('last_language') or '', c['turn_count'],
+            c.get('resolved_by') or '', c.get('rating') if c.get('rating') is not None else '',
+            c['first_seen_at'], c['last_seen_at'],
+        ])
+    return Response(
+        buffer.getvalue(), mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=conversations.csv'},
     )
 
 
@@ -175,12 +254,13 @@ def ticket_detail(ticket_id):
     if not ticket:
         return render_template(
             'ticket_detail.html', ticket=None, ticket_id=ticket_id,
-            statuses=db.TICKET_STATUSES, assignable_admins=[], show_nav=True, active='tickets',
+            statuses=db.TICKET_STATUSES, assignable_admins=[], language_codes=db.LANGUAGE_CODES,
+            show_nav=True, active='tickets',
         ), 404
     return render_template(
         'ticket_detail.html', ticket=ticket, ticket_id=ticket_id,
         statuses=db.TICKET_STATUSES, assignable_admins=db.list_assignable_admins(),
-        show_nav=True, active='tickets',
+        language_codes=db.LANGUAGE_CODES, show_nav=True, active='tickets',
     )
 
 
@@ -199,7 +279,8 @@ def users():
         elif len(password) < 8:
             error = 'Password must be at least 8 characters.'
         else:
-            created = db.create_admin_user(email, auth.hash_password(password), role)
+            languages = [l for l in request.form.getlist('languages') if l in db.LANGUAGE_CODES]
+            created = db.create_admin_user(email, auth.hash_password(password), role, languages)
             if not created:
                 error = f'{email} already has an account.'
             else:
@@ -207,7 +288,8 @@ def users():
 
     return render_template(
         'users.html', users=db.list_admin_users(), roles=auth.ROLES,
-        role_labels=auth.ROLE_LABELS, error=error, show_nav=True, active='users',
+        role_labels=auth.ROLE_LABELS, language_codes=db.LANGUAGE_CODES,
+        error=error, show_nav=True, active='users',
     )
 
 
@@ -223,6 +305,18 @@ def update_user_role(user_id):
             return render_template('403.html', show_nav=True,
                                     message="Can't demote the last remaining Admin."), 403
         db.update_admin_user_role(user_id, new_role)
+    return redirect(url_for('dashboard.users'))
+
+
+@bp.route('/users/<int:user_id>/languages', methods=['POST'])
+@auth.role_required('admin')
+def update_user_languages(user_id):
+    """#4: which of Hindi/Tamil/Telugu/Malayalam this person handles —
+    round-robin prefers them for a matching ticket's language. Empty
+    selection is valid (clears their languages, meaning no preference,
+    not 'handles nothing' — see _pick_round_robin_assignee)."""
+    languages = [l for l in request.form.getlist('languages') if l in db.LANGUAGE_CODES]
+    db.update_admin_user_languages(user_id, languages)
     return redirect(url_for('dashboard.users'))
 
 

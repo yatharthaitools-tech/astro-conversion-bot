@@ -192,7 +192,28 @@ _MIGRATIONS = [
     # above runs (it's defined later in _SCHEMA), so this FK has to be
     # added here instead, after both tables exist.
     "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assigned_admin_id INTEGER REFERENCES admin_users(id)",
+    # Ticket's own language (from conversations.last_language at creation
+    # time, not live-tracked afterward) — what #4's language-based
+    # round robin actually matches against.
+    "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS language TEXT",
+    # Which of Hindi/Tamil/Telugu/Malayalam (language codes, see
+    # LANGUAGE_CODES below) a Support Agent/Admin actually handles —
+    # empty/NULL means "no language preference set", not "handles
+    # nothing" (see _pick_round_robin_assignee's fallback).
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS languages TEXT[] NOT NULL DEFAULT '{}'",
+    # 'agent' = a real Zoho Desk agent's reply, synced in via the webhook
+    # (see app.py's /webhooks/zoho) — was user/bot only. Postgres names a
+    # column-level CHECK this way by default; DROP+ADD is the standard
+    # idempotent way to widen one (there's no ALTER ... IF NOT EXISTS
+    # equivalent for constraints).
+    "ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_role_check",
+    "ALTER TABLE messages ADD CONSTRAINT messages_role_check CHECK (role IN ('user', 'bot', 'agent'))",
 ]
+
+# Hindi/Tamil/Telugu/Malayalam — the languages #4 asked for ticket routing
+# to cover. Deliberately not the bot's full LANGUAGE_NAMES set (English/
+# Hinglish/Marathi/Bengali aren't part of this routing requirement).
+LANGUAGE_CODES = {'hi': 'Hindi', 'ta': 'Tamil', 'te': 'Telugu', 'ml': 'Malayalam'}
 
 
 @contextmanager
@@ -392,7 +413,7 @@ def get_conversation(session_id: str) -> dict:
 
 # --- Tickets -----------------------------------------------------------
 
-def _pick_round_robin_assignee(cur) -> int:
+def _pick_round_robin_assignee(cur, language: str = None) -> int:
     """Whoever can actually work a ticket (admin or support_agent) AND has
     gone longest without a new one — a teammate with zero tickets yet
     (NULL last-assigned) always comes before anyone with a real history,
@@ -400,7 +421,17 @@ def _pick_round_robin_assignee(cur) -> int:
     of starting at the back of the line. Returns None if there's nobody
     eligible yet (e.g. a fresh install with only an analyst so far) —
     callers leave assigned_admin_id NULL in that case, same as an
-    unassigned ticket always looked before this existed."""
+    unassigned ticket always looked before this existed.
+
+    language (one of dashboard.db.LANGUAGE_CODES, e.g. 'hi') prefers
+    whoever has that language in admin_users.languages over anyone who
+    doesn't — but never excludes non-matching agents outright: when
+    nobody covers this language (or language is None/unsupported), the
+    ORDER BY's first key is a no-op for everyone and this degrades
+    straight to the plain longest-since-assigned pick, same as the no-
+    language case always worked. That's the explicit product decision
+    for the no-coverage case — route to whoever's around rather than
+    leave it unassigned."""
     cur.execute(
         """SELECT au.id FROM admin_users au
            LEFT JOIN (
@@ -409,8 +440,12 @@ def _pick_round_robin_assignee(cur) -> int:
                GROUP BY assigned_admin_id
            ) t ON t.assigned_admin_id = au.id
            WHERE au.role IN ('admin', 'support_agent')
-           ORDER BY t.last_assigned ASC NULLS FIRST, au.id ASC
-           LIMIT 1"""
+           ORDER BY
+               CASE WHEN %(language)s IS NOT NULL AND %(language)s = ANY(au.languages) THEN 0 ELSE 1 END,
+               t.last_assigned ASC NULLS FIRST,
+               au.id ASC
+           LIMIT 1""",
+        {"language": language},
     )
     row = cur.fetchone()
     return row['id'] if row else None
@@ -418,20 +453,20 @@ def _pick_round_robin_assignee(cur) -> int:
 
 def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
                    sub_category: str, description: str, evidence_url: str, ltv_tier: str,
-                   zoho_ticket_id: str = None) -> None:
+                   zoho_ticket_id: str = None, language: str = None) -> None:
     now = _now()
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
-                assignee_id = _pick_round_robin_assignee(cur)
+                assignee_id = _pick_round_robin_assignee(cur, language)
                 cur.execute(
                     """INSERT INTO tickets (ticket_ref, session_id, user_id, category, sub_category,
                                              description, evidence_url, ltv_tier, status, created_at,
-                                             zoho_ticket_id, assigned_admin_id)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Open', %s, %s, %s)
+                                             zoho_ticket_id, assigned_admin_id, language)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Open', %s, %s, %s, %s)
                        RETURNING id""",
                     (ticket_ref, session_id, user_id, category, sub_category, description,
-                     evidence_url, ltv_tier, now, zoho_ticket_id, assignee_id),
+                     evidence_url, ltv_tier, now, zoho_ticket_id, assignee_id, language),
                 )
                 ticket_id = cur.fetchone()['id']
                 cur.execute(
@@ -440,6 +475,20 @@ def record_ticket(ticket_ref: str, session_id: str, user_id: str, category: str,
                 )
     except psycopg2.Error:
         logger.warning("record_ticket failed for ticket %s", ticket_ref, exc_info=True)
+
+
+def bulk_update_ticket_assignee(ticket_ids: list, admin_id) -> int:
+    """Bulk reassignment for admins — e.g. moving everything off someone
+    who's on leave. Returns how many rows actually changed."""
+    if not ticket_ids:
+        return 0
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE tickets SET assigned_admin_id = %s WHERE id = ANY(%s)",
+                (admin_id, ticket_ids),
+            )
+            return cur.rowcount
 
 
 def update_ticket_assignee(ticket_id: int, admin_id: int) -> bool:
@@ -468,7 +517,7 @@ def list_tickets_for_user(user_id: str, limit: int = 20) -> list:
 
 def list_tickets(limit: int = 50, offset: int = 0, status: str = None,
                   category: str = None, date_from: str = None, date_to: str = None,
-                  assigned_admin_id=None) -> list:
+                  assigned_admin_id=None, language: str = None) -> list:
     query = (
         "SELECT t.*, au.email AS assigned_admin_email FROM tickets t "
         "LEFT JOIN admin_users au ON au.id = t.assigned_admin_id WHERE 1=1"
@@ -480,6 +529,9 @@ def list_tickets(limit: int = 50, offset: int = 0, status: str = None,
     if category:
         query += " AND t.category = %s"
         params.append(category)
+    if language:
+        query += " AND t.language = %s"
+        params.append(language)
     if date_from:
         query += " AND t.created_at >= %s"
         params.append(date_from)
@@ -500,7 +552,7 @@ def list_tickets(limit: int = 50, offset: int = 0, status: str = None,
 
 
 def count_tickets(status: str = None, category: str = None, date_from: str = None, date_to: str = None,
-                   assigned_admin_id=None) -> int:
+                   assigned_admin_id=None, language: str = None) -> int:
     query = "SELECT COUNT(*) AS n FROM tickets t WHERE 1=1"
     params = []
     if status:
@@ -509,6 +561,9 @@ def count_tickets(status: str = None, category: str = None, date_from: str = Non
     if category:
         query += " AND t.category = %s"
         params.append(category)
+    if language:
+        query += " AND t.language = %s"
+        params.append(language)
     if assigned_admin_id == 'unassigned':
         query += " AND t.assigned_admin_id IS NULL"
     elif assigned_admin_id:
@@ -563,6 +618,88 @@ def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
     except psycopg2.Error:
         logger.warning("update_ticket_status failed for ticket %s", ticket_id, exc_info=True)
         return False
+
+
+def update_ticket_fields(ticket_id: int, category: str = None, sub_category: str = None) -> bool:
+    """Category/sub-category as corrected by a Zoho agent (see #3's
+    webhook sync — app.py's /webhooks/zoho) — only touches fields that
+    were actually provided, same COALESCE pattern as update_ticket_status's
+    resolved_at."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE tickets SET
+                       category = COALESCE(%s, category),
+                       sub_category = COALESCE(%s, sub_category)
+                   WHERE id = %s""",
+                (category, sub_category, ticket_id),
+            )
+            return cur.rowcount > 0
+
+
+def get_ticket_by_zoho_id(zoho_ticket_id: str) -> dict:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM tickets WHERE zoho_ticket_id = %s", (zoho_ticket_id,))
+            return _to_dict(cur.fetchone())
+
+
+def get_latest_resolved_ticket(user_id: str) -> dict:
+    """Most recently Resolved/Closed ticket for this visitor — what #5's
+    72-hour reopen window checks against. None if they have no
+    resolved/closed ticket at all (nothing to reopen)."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM tickets WHERE user_id = %s AND status IN ('Resolved', 'Closed')
+                   ORDER BY resolved_at DESC NULLS LAST LIMIT 1""",
+                (user_id,),
+            )
+            return _to_dict(cur.fetchone())
+
+
+# --- Agent messages (Zoho -> visitor chat sync, #3) -----------------------
+
+def record_agent_message(session_id: str, text: str, author_name: str = None) -> None:
+    """A real Zoho agent's reply, synced in via the webhook — same
+    `messages` row shape as a bot turn, role='agent' so the visitor's
+    chat (polling /conversations/<session_id>/agent-messages) and the
+    admin transcript view can both tell it apart from the bot's own
+    replies. author_name is folded into the text itself (e.g. 'Priya: ...')
+    rather than a new column — one extra field for a cosmetic label isn't
+    worth a schema change, and it reads naturally either way."""
+    now = _now()
+    display_text = f"{author_name}: {text}" if author_name else text
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO messages (session_id, role, text, source, card_shown, created_at)
+                       VALUES (%s, 'agent', %s, 'zoho_agent', FALSE, %s)""",
+                    (session_id, display_text, now),
+                )
+    except psycopg2.Error:
+        logger.warning("record_agent_message failed for session %s", session_id, exc_info=True)
+
+
+def get_new_agent_messages(session_id: str, since: str) -> list:
+    """Polled by the visitor's own chat widget (app.py's
+    /conversations/<session_id>/agent-messages) — only ever returns rows
+    for the session_id the caller already has (that's the same trust
+    model the rest of this app's visitor-facing routes use; there's no
+    stronger per-visitor auth to check against). `since` is best-effort:
+    a bad/missing value just returns everything rather than erroring, so
+    a client with no prior checkpoint still gets the full backlog once."""
+    query = "SELECT * FROM messages WHERE session_id = %s AND role = 'agent'"
+    params = [session_id]
+    if since:
+        query += " AND created_at > %s"
+        params.append(since)
+    query += " ORDER BY created_at ASC"
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return [_to_dict(r) for r in cur.fetchall()]
 
 
 # --- Coin credit at-most-once gate ---------------------------------------
@@ -848,18 +985,21 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
 
 # --- Admin users (email/password + RBAC) ---------------------------------
 
-def create_admin_user(email: str, password_hash: str, role: str) -> dict:
+def create_admin_user(email: str, password_hash: str, role: str, languages: list = None) -> dict:
     """Returns the new row, or None if that email is already taken (a
     UNIQUE-violation, not an exception — callers show a friendly 'already
-    exists' message instead of a 500)."""
+    exists' message instead of a 500). languages is a subset of
+    LANGUAGE_CODES' keys (e.g. ['hi', 'ta']) — which tickets round-robin
+    routes to this person; empty/omitted means no language preference,
+    not "handles nothing" (see _pick_round_robin_assignee)."""
     email = email.strip().lower()
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO admin_users (email, password_hash, role, created_at)
-                       VALUES (%s, %s, %s, %s) RETURNING *""",
-                    (email, password_hash, role, _now()),
+                    """INSERT INTO admin_users (email, password_hash, role, languages, created_at)
+                       VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+                    (email, password_hash, role, languages or [], _now()),
                 )
                 return _to_dict(cur.fetchone())
     except psycopg2.errors.UniqueViolation:
@@ -915,6 +1055,13 @@ def update_admin_user_role(user_id: int, role: str) -> bool:
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE admin_users SET role = %s WHERE id = %s", (role, user_id))
+            return cur.rowcount > 0
+
+
+def update_admin_user_languages(user_id: int, languages: list) -> bool:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE admin_users SET languages = %s WHERE id = %s", (languages or [], user_id))
             return cur.rowcount > 0
 
 

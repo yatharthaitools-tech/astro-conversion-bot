@@ -1,4 +1,5 @@
 import base64
+import hmac
 import mimetypes
 import os
 import re
@@ -428,7 +429,27 @@ def ask():
         'language': lang,
         'action': ctx.ui_action,
         'show_feedback': ctx.show_feedback,
+        # Tells the client a ticket now exists for this session — that's
+        # its cue to start polling agent-messages below for a live reply
+        # once a real CS agent picks it up in Zoho (see #3's webhook sync,
+        # /webhooks/zoho). Client-side this only ever turns polling ON,
+        # never off mid-session — see static/script.js's hasOpenTicket.
+        'ticket_raised': ctx.ticket_raised,
     })
+
+
+@app.route('/conversations/<session_id>/agent-messages')
+def get_agent_messages(session_id):
+    """Polled by the visitor's own chat widget (static/script.js) while a
+    ticket is open, so a real Zoho agent's reply shows up in the SAME
+    chat window instead of the visitor needing a separate channel — see
+    dashboard/db.py's get_new_agent_messages docstring for the trust
+    model (same as every other visitor-facing route here: whoever has
+    this session_id can read it, there's no stronger per-visitor auth to
+    check against)."""
+    since = request.args.get('since') or None
+    messages = dashboard_db.get_new_agent_messages(session_id, since)
+    return jsonify({'messages': messages})
 
 
 @app.route('/feedback', methods=['POST'])
@@ -462,6 +483,69 @@ def track_event():
         event_data = {}
     dashboard_db.record_event(session_id, user_id, event_type, event_data)
     return jsonify({'ok': True})
+
+
+ZOHO_WEBHOOK_SECRET = os.environ.get('ZOHO_WEBHOOK_SECRET', '')
+
+
+@app.route('/webhooks/zoho', methods=['POST'])
+def zoho_webhook():
+    """#3's inbound half — an agent's status/category/reply change in Zoho
+    Desk reflects back here instead of needing this dashboard AND Zoho
+    open side by side. Zoho Desk's Webhooks feature (Setup > Automation >
+    Webhooks) lets YOU define the outgoing JSON body as a merge-field
+    template, so this endpoint's contract is whatever you configure there
+    to point at this URL — set the body to exactly this shape (adjust the
+    ${...} merge fields to match your actual Zoho Desk field picker, same
+    "verify against your real portal" caveat as zoho_client.py's category
+    map and customFields):
+        {
+          "zoho_ticket_id": "${Ticket.id}",
+          "status": "${Ticket.status}",          // optional
+          "category": "${Ticket.category}",       // optional
+          "sub_category": "${Ticket.subCategory}",// optional
+          "comment": "${Comment.content}",        // optional — a new reply to sync into the visitor's chat
+          "agent_name": "${Comment.commentedBy}"  // optional
+        }
+    Add a custom header (or query param) carrying ZOHO_WEBHOOK_SECRET's
+    value and this route rejects anything that doesn't match it — Zoho's
+    webhook setup lets you add custom headers to the outgoing call.
+    Every field but zoho_ticket_id is optional and independently applied;
+    an unknown zoho_ticket_id or a status that isn't one of
+    dashboard.db.TICKET_STATUSES is just ignored rather than erroring —
+    Zoho's own retry-on-non-2xx behavior isn't something a malformed
+    payload should trigger repeatedly."""
+    provided_secret = request.headers.get('X-Webhook-Secret') or request.args.get('secret') or ''
+    if not ZOHO_WEBHOOK_SECRET or not hmac.compare_digest(provided_secret, ZOHO_WEBHOOK_SECRET):
+        return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    zoho_ticket_id = str(payload.get('zoho_ticket_id') or '').strip()
+    if not zoho_ticket_id:
+        return jsonify({'ok': False, 'error': 'zoho_ticket_id is required'}), 400
+
+    ticket = dashboard_db.get_ticket_by_zoho_id(zoho_ticket_id)
+    if not ticket:
+        # Not necessarily an error — could be a webhook firing for a ticket
+        # this bot never raised (e.g. a manually-created Zoho ticket if
+        # the same webhook is reused department-wide). Ack anyway so Zoho
+        # doesn't retry.
+        return jsonify({'ok': True, 'matched': False})
+
+    status = str(payload.get('status') or '').strip()
+    if status in dashboard_db.TICKET_STATUSES:
+        dashboard_db.update_ticket_status(ticket['id'], status, note='Synced from Zoho')
+
+    category = payload.get('category')
+    sub_category = payload.get('sub_category')
+    if category or sub_category:
+        dashboard_db.update_ticket_fields(ticket['id'], category=category, sub_category=sub_category)
+
+    comment = str(payload.get('comment') or '').strip()
+    if comment and ticket.get('session_id'):
+        dashboard_db.record_agent_message(ticket['session_id'], comment, payload.get('agent_name'))
+
+    return jsonify({'ok': True, 'matched': True})
 
 
 if __name__ == '__main__':

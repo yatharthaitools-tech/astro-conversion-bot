@@ -148,9 +148,17 @@ def _handle_create_support_ticket(safe_input, ctx):
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
     ticket = ticket_service.create_ticket(
         ctx.user_id, category, sub_category, description, evidence_url,
-        session_id=ctx.session_id,
+        session_id=ctx.session_id, language=ctx.language,
     )
+    ctx.ticket_raised = True
     return {"ok": True, "ticket_id": ticket["ticket_id"], "status": ticket["status"]}
+
+
+def _handle_reopen_ticket(safe_input, ctx):
+    result = ticket_service.reopen_ticket(ctx.user_id, note=safe_input.get("reason"))
+    if result["reopened"]:
+        ctx.ticket_raised = True
+    return result
 
 
 def _handle_log_feature_request(safe_input, ctx):
@@ -198,6 +206,7 @@ REGISTRY = {
     "notify_me_subscribe": _handle_notify_me_subscribe,
     "trigger_payment_bottomsheet": _handle_trigger_payment_bottomsheet,
     "create_support_ticket": _handle_create_support_ticket,
+    "reopen_ticket": _handle_reopen_ticket,
     "log_feature_request": _handle_log_feature_request,
     "mark_issue_resolved": _handle_mark_issue_resolved,
     "get_tickets": _handle_get_tickets,

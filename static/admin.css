@@ -326,3 +326,19 @@ h2 { font-size: 0.95rem; margin: 0 0 10px; color: rgba(42, 28, 20, 0.7); }
   background: none; border: none; color: #c0392b; font-size: 0.8rem; cursor: pointer; padding: 4px 6px;
 }
 .assign-select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85rem; width: 100%; }
+
+.lang-check-group { display: inline-flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.lang-check { display: inline-flex; align-items: center; gap: 3px; font-size: 0.78rem; color: rgba(42, 28, 20, 0.7); cursor: pointer; white-space: nowrap; }
+.lang-check input { margin: 0; }
+
+.page-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.bulk-bar {
+  display: flex; align-items: center; gap: 8px; font-size: 0.85rem;
+  background: rgba(232, 83, 47, 0.06); border: 1px solid rgba(232, 83, 47, 0.18);
+  border-radius: 10px; padding: 8px 12px; margin-bottom: 10px;
+}
+.bulk-bar select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85rem; }
+.bulk-bar button {
+  padding: 6px 14px; border: none; border-radius: 8px; background: var(--sun-dark);
+  color: white; font-weight: 600; font-size: 0.82rem; cursor: pointer;
+}
