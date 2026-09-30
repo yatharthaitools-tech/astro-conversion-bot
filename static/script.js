@@ -139,8 +139,12 @@ function appendImageMessage(sender, url) {
   msg.appendChild(img);
   chatBody.appendChild(msg);
   chatBody.scrollTop = chatBody.scrollHeight;
-  // No vision analysis on our side — this just threads a text marker into
-  // history so the bot's reply at least knows a photo was shared.
+  // Threads a text marker into history so later turns can still find this
+  // photo was shared (e.g. for evidence_url on a ticket raised afterward).
+  // The actual vision analysis — app.py reading the file and attaching it
+  // to the Gemini call — only happens for the turn that's shared right
+  // now (see app.py's load_current_photo), not every time this marker is
+  // found in history again.
   history.push({ sender, text: `[Shared a photo: ${url}]` });
 }
 
@@ -281,13 +285,21 @@ async function handlePhotoUpload(file) {
     const data = await response.json();
     if (!data.url) throw new Error('upload failed');
     appendImageMessage('user', data.url);
+    // Deliberately NOT presuming what the photo is for (face/palm reading,
+    // a payment screenshot, evidence for a complaint, etc.) — the backend
+    // now actually sends the image itself to Gemini for a real look
+    // (app.py's ask() + agent/orchestrator.py), so the model figures out
+    // what's in it and responds accordingly instead of the old hardcoded
+    // "face or palm reading" assumption forcing every photo down the same
+    // path regardless of what it actually shows.
+    //
     // The marker also needs to be in the outgoing question text itself, not
     // just history — sendToBot's history payload excludes the message
     // currently being sent (history.slice(0, -1)), so a marker only pushed
     // via appendImageMessage would never actually reach the backend for
     // THIS turn. Embedding it here too means find_last_attachment_url()
     // can find it either way.
-    await sendToBot(`I just shared a photo — can you connect me with someone for a face or palm reading based on it? [Shared a photo: ${data.url}]`);
+    await sendToBot(`[Shared a photo: ${data.url}]`);
   } catch (error) {
     appendMessage('bot', "Sorry, I couldn't upload that photo — please try again.");
   }

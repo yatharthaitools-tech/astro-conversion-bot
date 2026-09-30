@@ -1,3 +1,5 @@
+import base64
+import mimetypes
 import os
 import re
 import uuid
@@ -312,6 +314,40 @@ def find_last_attachment_url(question: str, history: list):
     return None
 
 
+def load_current_photo(question: str):
+    """Only for a photo shared in THIS exact turn (marker on `question`
+    itself, not history) — the model should actually look at a photo once,
+    when it's shared, not re-analyze the same bytes on every later turn
+    just because find_last_attachment_url() can still find the marker in
+    old history for evidence_url purposes. Returns (base64_data, mime_type)
+    or (None, None) — never raises; a missing/unreadable file just means
+    no image reaches the model this turn, same as if none was shared."""
+    match = _ATTACHMENT_MARKER_RE.search(question)
+    if not match:
+        return None, None
+    url = match.group(1)
+
+    static_prefix = app.static_url_path + '/'
+    if not url.startswith(static_prefix):
+        return None, None
+    relative_path = url[len(static_prefix):]
+    file_path = os.path.join(app.static_folder, relative_path)
+    # Never let a crafted marker path escape static/ (e.g. '../../etc/passwd').
+    if not os.path.abspath(file_path).startswith(os.path.abspath(app.static_folder) + os.sep):
+        return None, None
+
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if not mime_type or not mime_type.startswith('image/'):
+        return None, None
+
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+    except OSError:
+        return None, None
+    return base64.b64encode(data).decode('ascii'), mime_type
+
+
 # At least this many user turns happen before the agent's own
 # trigger_recommend_astrologer CTA shows for a general concern — see
 # agent/prompt.py's warmup clause. Prediction questions and explicit
@@ -335,6 +371,7 @@ def ask():
 
     ctx = agent_context.resolve_session(payload, session_id, lang, history)
     ctx.last_attachment_url = find_last_attachment_url(question, history)
+    image_data, image_mime = load_current_photo(question)
     dashboard_db.ensure_conversation(session_id, ctx.user_id)
 
     if is_prediction_intent(question, lang):
@@ -347,7 +384,10 @@ def ask():
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
     else:
-        answer = agent_orchestrator.run_chat_turn(question, history, ctx, turn_number, past_warmup)
+        answer = agent_orchestrator.run_chat_turn(
+            question, history, ctx, turn_number, past_warmup,
+            image_data=image_data, image_mime=image_mime,
+        )
         source = 'agent'
         if not answer:
             # Gemini unconfigured or the whole tool loop failed — everything
