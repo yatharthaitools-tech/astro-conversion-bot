@@ -370,6 +370,12 @@ def ask():
     ctx = agent_context.resolve_session(payload, session_id, lang, history)
     ctx.last_attachment_url = find_last_attachment_url(question, history)
     image_data, image_mime = load_current_photo(question)
+    # A photo was shared this turn but its bytes never made it to the model
+    # (bad path, unknown mime, unreadable file) — say so explicitly rather than
+    # letting the model guess what a photo it can't see contains.
+    image_unavailable = bool(_ATTACHMENT_MARKER_RE.search(question)) and not image_data
+    if image_unavailable:
+        app.logger.warning('Photo marker in question but image could not be loaded: %r', question[:200])
     dashboard_db.ensure_conversation(session_id, ctx.user_id)
 
     if is_prediction_intent(question, lang):
@@ -385,6 +391,7 @@ def ask():
         answer = agent_orchestrator.run_chat_turn(
             question, history, ctx, turn_number, past_warmup,
             image_data=image_data, image_mime=image_mime,
+            image_unavailable=image_unavailable,
         )
         source = 'agent'
         if not answer:
@@ -451,7 +458,8 @@ def get_history(session_id):
         return jsonify({'messages': [], 'has_ticket': False})
     return jsonify({
         'messages': [
-            {'role': m['role'], 'text': m['text']} for m in conv['messages']
+            {'role': m['role'], 'text': m['text'], 'created_at': m['created_at']}
+            for m in conv['messages']
         ],
         'has_ticket': dashboard_db.session_has_ticket(session_id),
     })
@@ -469,6 +477,19 @@ def get_agent_messages(session_id):
     since = request.args.get('since') or None
     messages = dashboard_db.get_new_agent_messages(session_id, since)
     return jsonify({'messages': messages})
+
+
+@app.route('/close', methods=['POST'])
+def close_session():
+    """Records that the visitor's chat session was closed, so the widget
+    (and /history on a later reload) can show 'Session closed on <date,
+    time>'. Same trust model as /feedback and /history: session_id only."""
+    payload = request.get_json(silent=True) or {}
+    session_id = str(payload.get('session_id') or '').strip()
+    if not session_id:
+        return jsonify({'ok': False, 'error': 'session_id is required'}), 400
+    closed_at = dashboard_db.record_session_closed(session_id)
+    return jsonify({'ok': closed_at is not None, 'closed_at': closed_at})
 
 
 @app.route('/feedback', methods=['POST'])

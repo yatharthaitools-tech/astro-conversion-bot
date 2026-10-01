@@ -205,9 +205,9 @@ _MIGRATIONS = [
     # (see app.py's /webhooks/zoho) — was user/bot only. Postgres names a
     # column-level CHECK this way by default; DROP+ADD is the standard
     # idempotent way to widen one (there's no ALTER ... IF NOT EXISTS
-    # equivalent for constraints).
+    # equivalent for constraints). 'system' = session-closed markers.
     "ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_role_check",
-    "ALTER TABLE messages ADD CONSTRAINT messages_role_check CHECK (role IN ('user', 'bot', 'agent'))",
+    "ALTER TABLE messages ADD CONSTRAINT messages_role_check CHECK (role IN ('user', 'bot', 'agent', 'system'))",
 ]
 
 # Hindi/Tamil/Telugu/Malayalam — the languages #4 asked for ticket routing
@@ -316,6 +316,37 @@ def record_turn(session_id: str, user_id: str, question: str, answer: str,
                 )
     except psycopg2.Error:
         logger.warning("record_turn failed for session %s", session_id, exc_info=True)
+
+
+def record_session_closed(session_id: str) -> str:
+    """Stores a 'session closed' marker as a role='system' message so it
+    replays in chat history at the right place in the thread. Returns the
+    close time (ISO-8601 UTC), or None if there's no such conversation or
+    the DB write failed. Idempotent: if the latest message is already a
+    close marker (closeChat can fire more than once), nothing new is added
+    and that marker's time is returned."""
+    now = _now()
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM conversations WHERE session_id = %s", (session_id,))
+                if not cur.fetchone():
+                    return None
+                cur.execute(
+                    "SELECT role, created_at FROM messages WHERE session_id = %s ORDER BY id DESC LIMIT 1",
+                    (session_id,),
+                )
+                last = cur.fetchone()
+                if last and last['role'] == 'system':
+                    return last['created_at'].isoformat()
+                cur.execute(
+                    "INSERT INTO messages (session_id, role, text, created_at) VALUES (%s, 'system', 'Session closed', %s)",
+                    (session_id, now),
+                )
+                return now.isoformat()
+    except psycopg2.Error:
+        logger.warning("record_session_closed failed for session %s", session_id, exc_info=True)
+        return None
 
 
 def record_rating(session_id: str, rating: int) -> bool:

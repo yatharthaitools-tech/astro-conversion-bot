@@ -12,6 +12,20 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 6
 
+_IMAGE_TURN_NOTE = (
+    "[The visitor attached the image above to this message. Base your reply ONLY on "
+    "what is actually visible in it — read any text in it. Do not assume it is a payment, "
+    "error, or reading photo, and do not let earlier topics in this chat decide what it is. "
+    "If it clearly shows a payment/error/app problem, respond to that specific thing. "
+    "If it is something else (e.g. a chat, a profile, a random picture), say briefly what "
+    "you see and ask what they want help with.]"
+)
+_IMAGE_UNAVAILABLE_NOTE = (
+    "[The visitor tried to share an image but it could not be loaded, so you cannot see it. "
+    "Do NOT guess what it shows. Tell them it didn't come through and ask them to resend "
+    "it or describe the problem in words.]"
+)
+
 
 def _history_to_contents(history):
     contents = []
@@ -26,7 +40,8 @@ def _history_to_contents(history):
 
 
 def run_chat_turn(question: str, history, ctx, turn_number: int, past_warmup: bool,
-                   image_data: str = None, image_mime: str = None):
+                   image_data: str = None, image_mime: str = None,
+                   image_unavailable: bool = False):
     """Returns answer text, or None if Gemini is unconfigured/unavailable
     (callers fall back to a rule-based responder). Side effects — a UI
     action to surface, whether the thread should close, the tool trace —
@@ -49,7 +64,17 @@ def run_chat_turn(question: str, history, ctx, turn_number: int, past_warmup: bo
     contents = _history_to_contents(history)
     current_parts = [{"text": question}]
     if image_data and image_mime:
-        current_parts.append({"inlineData": {"mimeType": image_mime, "data": image_data}})
+        # Image first, then an explicit instruction after it: with only a bare
+        # '[Shared a photo: <url>]' text part the model leaned on the prompt's
+        # examples and earlier chat topics (e.g. calling an unrelated chat
+        # screenshot a "payment issue") instead of what the pixels show.
+        current_parts = [
+            {"inlineData": {"mimeType": image_mime, "data": image_data}},
+            {"text": question},
+            {"text": _IMAGE_TURN_NOTE},
+        ]
+    elif image_unavailable:
+        current_parts.append({"text": _IMAGE_UNAVAILABLE_NOTE})
     contents.append({"role": "user", "parts": current_parts})
 
     for _ in range(MAX_ITERATIONS):

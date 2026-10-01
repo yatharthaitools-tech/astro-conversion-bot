@@ -81,6 +81,29 @@ def test_run_chat_turn_attaches_image_as_inline_data(monkeypatch):
     current_turn_parts = captured["contents"][-1]["parts"]
     assert {"text": "[Shared a photo: /static/uploads/x.png]"} in current_turn_parts
     assert {"inlineData": {"mimeType": "image/png", "data": "ZmFrZWJhc2U2NGRhdGE="}} in current_turn_parts
+    # Image comes before the text, followed by the grounding instruction.
+    assert "inlineData" in current_turn_parts[0]
+    assert current_turn_parts[-1] == {"text": agent_orchestrator._IMAGE_TURN_NOTE}
+
+
+def test_run_chat_turn_tells_model_when_image_could_not_load(monkeypatch):
+    monkeypatch.setattr(agent_orchestrator.client, "is_configured", lambda: True)
+    captured = {}
+
+    def fake_call(system_instruction, contents, tools):
+        captured["contents"] = contents
+        return {"candidates": [{"content": {"parts": [{"text": "didn't come through"}]}}]}
+
+    ctx = SessionContext(user_id="u1", session_id="s1", language="en")
+    with patch.object(agent_orchestrator.client, "call", side_effect=fake_call):
+        agent_orchestrator.run_chat_turn(
+            "[Shared a photo: /static/uploads/x.png]", [], ctx, turn_number=1, past_warmup=True,
+            image_unavailable=True,
+        )
+
+    parts = captured["contents"][-1]["parts"]
+    assert {"text": agent_orchestrator._IMAGE_UNAVAILABLE_NOTE} in parts
+    assert not any("inlineData" in p for p in parts)
 
 
 def test_run_chat_turn_without_image_has_no_inline_data(monkeypatch):

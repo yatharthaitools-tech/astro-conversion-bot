@@ -544,3 +544,14 @@ button, input { font: inherit; }
   text-align: center;
 }
 .offline-banner.visible { display: flex; }
+
+.session-closed-note {
+  align-self: center;
+  margin: 12px auto;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #8a7f78;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 999px;
+  text-align: center;
+}

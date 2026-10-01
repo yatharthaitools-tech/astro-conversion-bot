@@ -231,6 +231,24 @@ function appendImageMessage(sender, url) {
   history.push({ sender, text: `[Shared a photo: ${url}]` });
 }
 
+// "Session closed on 1 Oct 2026, 3:05 PM" divider. Deliberately NOT pushed
+// into `history` — that array is what gets sent to the model as
+// conversation, and this is UI-only.
+function appendSessionClosedNote(isoTime) {
+  const last = chatBody.lastElementChild;
+  if (last && last.classList.contains('session-closed-note')) return;
+  const when = isoTime ? new Date(isoTime) : new Date();
+  const valid = !isNaN(when.getTime());
+  const stamp = (valid ? when : new Date()).toLocaleString(undefined, {
+    day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  const note = document.createElement('div');
+  note.className = 'session-closed-note';
+  note.textContent = `Session closed on ${stamp}`;
+  chatBody.appendChild(note);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
 const _PHOTO_MARKER_RE = /\[Shared a photo: (\S+)\]/;
 
 // #3 on the QA list: a reload within the same browser/WebView session
@@ -248,6 +266,10 @@ async function restoreHistoryOrShowWelcome() {
       const data = await response.json();
       if (data.messages && data.messages.length > 0) {
         for (const m of data.messages) {
+          if (m.role === 'system') {
+            appendSessionClosedNote(m.created_at);
+            continue;
+          }
           const match = m.role === 'user' ? m.text.match(_PHOTO_MARKER_RE) : null;
           if (match) {
             appendImageMessage('user', match[1]);
@@ -640,6 +662,14 @@ const PROFILE_DEEPLINK = 'astrolokal://BottomTabs?screen=Profile';
 function closeChat(deeplink = PROFILE_DEEPLINK) {
   clearInactivityTimer();
   stopAgentMessagePolling();
+  // Persist the close (so it shows in restored history too) and show the
+  // note right away; the server's timestamp replaces the local one on reload.
+  appendSessionClosedNote();
+  fetch('/close', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: getSessionId() }),
+  }).catch(() => {});
   sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
   // Session-lifecycle pair with consulation_started above — fired from
   // here (not a specific button) since this is the one place the chat
