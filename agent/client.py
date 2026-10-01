@@ -25,10 +25,11 @@ def call(system_instruction: str, contents: list, tools: list) -> dict:
     payload = {
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "contents": contents,
-        "tools": [{"functionDeclarations": function_declarations}],
         "generationConfig": {"temperature": 0.4, "maxOutputTokens": 300},
         "labels": {"feature": _base.GEMINI_BILLING_FEATURE},
     }
+    if function_declarations:
+        payload["tools"] = [{"functionDeclarations": function_declarations}]
     response = requests.post(
         _base._endpoint_url(),
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},

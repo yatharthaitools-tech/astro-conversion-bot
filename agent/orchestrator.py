@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 MAX_ITERATIONS = 6
 
 _IMAGE_TURN_NOTE = (
-    "[The visitor attached the image above to this message. Base your reply ONLY on "
-    "what is actually visible in it — read any text in it. Do not assume it is a payment, "
-    "error, or reading photo, and do not let earlier topics in this chat decide what it is. "
-    "If it clearly shows a payment/error/app problem, respond to that specific thing. "
-    "If it is something else (e.g. a chat, a profile, a random picture), say briefly what "
-    "you see and ask what they want help with.]"
+    "[The visitor attached the image above. Look at it, but do NOT act on it yet: your ONLY "
+    "job this turn is to ask what their concern is. Briefly acknowledge the image in a few "
+    "words based on what is actually visible (never assume it is a payment, error or reading "
+    "photo), then ask ONE direct question about what they need help with. Do not offer to "
+    "connect them with an astrologer, do not call any tool, do not make claims about payments "
+    "or issues, and do not give any other information until they answer.]"
 )
 _IMAGE_UNAVAILABLE_NOTE = (
     "[The visitor tried to share an image but it could not be loaded, so you cannot see it. "
@@ -77,9 +77,14 @@ def run_chat_turn(question: str, history, ctx, turn_number: int, past_warmup: bo
         current_parts.append({"text": _IMAGE_UNAVAILABLE_NOTE})
     contents.append({"role": "user", "parts": current_parts})
 
+    # On a turn with a photo, tools are withheld entirely: the reply must be
+    # just the concern question, never a ticket/connect-card/resolve action
+    # taken off a photo the visitor hasn't explained yet.
+    tools = [] if (image_data and image_mime) or image_unavailable else tool_schemas.ALL_TOOLS
+
     for _ in range(MAX_ITERATIONS):
         try:
-            response = client.call(system_instruction, contents, tool_schemas.ALL_TOOLS)
+            response = client.call(system_instruction, contents, tools)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gemini call failed: %s", exc)
             return None

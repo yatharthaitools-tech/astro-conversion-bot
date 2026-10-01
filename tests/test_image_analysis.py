@@ -68,6 +68,7 @@ def test_run_chat_turn_attaches_image_as_inline_data(monkeypatch):
 
     def fake_call(system_instruction, contents, tools):
         captured["contents"] = contents
+        captured["tools"] = tools
         return {"candidates": [{"content": {"parts": [{"text": "I can see it, tell me more"}]}}]}
 
     ctx = SessionContext(user_id="u1", session_id="s1", language="en")
@@ -84,6 +85,8 @@ def test_run_chat_turn_attaches_image_as_inline_data(monkeypatch):
     # Image comes before the text, followed by the grounding instruction.
     assert "inlineData" in current_turn_parts[0]
     assert current_turn_parts[-1] == {"text": agent_orchestrator._IMAGE_TURN_NOTE}
+    # No tools on an image turn — it only asks the concern.
+    assert captured["tools"] == []
 
 
 def test_run_chat_turn_tells_model_when_image_could_not_load(monkeypatch):
