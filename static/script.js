@@ -5,6 +5,36 @@ const photoBtn = document.getElementById('photoBtn');
 const photoInput = document.getElementById('photoInput');
 const quickReplies = document.getElementById('quickReplies');
 const closeBtn = document.getElementById('closeBtn');
+const offlineBanner = document.getElementById('offlineBanner');
+
+// QA list #5/#6/#11: a plain 100vh in CSS ignores the on-screen keyboard
+// — iOS leaves a blank gap between the input bar and the keyboard
+// (visualViewport shrinks, the page doesn't), and other browsers
+// recalculate 100vh abruptly on keyboard open/close, causing the whole
+// layout to flicker/jump. Keeping --app-height in sync with the REAL
+// visible area (styles.css's .chat-modal reads it) fixes both at the
+// root instead of patching each symptom separately.
+function syncAppHeight() {
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-height', `${vh}px`);
+}
+syncAppHeight();
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncAppHeight);
+} else {
+  window.addEventListener('resize', syncAppHeight);
+}
+
+// QA list #4: a lost connection mid-chat otherwise just looks like the
+// bot giving a wrong/generic answer (sendToBot's catch block) — this
+// names the actual problem instead.
+function syncOfflineBanner() {
+  if (!offlineBanner) return;
+  offlineBanner.classList.toggle('visible', !navigator.onLine);
+}
+syncOfflineBanner();
+window.addEventListener('online', syncOfflineBanner);
+window.addEventListener('offline', syncOfflineBanner);
 
 // Tara's avatar photo, reused next to every plain-text bot reply and
 // the typing indicator — same image as the header's own avatar
@@ -20,6 +50,59 @@ const TARA_AVATAR_IMG = '<img src="/static/avatars/tara-avatar.png" alt="" />';
 const INACTIVITY_MS = 20000;
 let inactivityTimer = null;
 let hasStartedConversation = false;
+
+// #3: once a ticket exists for this session, a real Zoho agent might
+// reply — poll for that so it shows up in THIS chat window instead of
+// the visitor needing a separate channel. Starts the moment /ask first
+// reports ticket_raised (see sendToBot below) and never turns back off
+// mid-session (a resolved ticket could still get a closing note) —
+// stopped only when the chat itself closes.
+const AGENT_POLL_MS = 8000;
+let hasOpenTicket = false;
+let agentPollTimer = null;
+let agentMessagesSince = null;
+
+function appendAgentMessage(text) {
+  const row = document.createElement('div');
+  row.className = 'message-row agent-row';
+  row.style.flexDirection = 'column';
+  row.style.alignItems = 'flex-start';
+  const label = document.createElement('div');
+  label.className = 'agent-label';
+  label.textContent = 'AstroLokal Support';
+  const msg = document.createElement('div');
+  msg.className = 'message agent';
+  msg.textContent = text;
+  row.appendChild(label);
+  row.appendChild(msg);
+  chatBody.appendChild(row);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+async function pollAgentMessages() {
+  try {
+    const params = agentMessagesSince ? `?since=${encodeURIComponent(agentMessagesSince)}` : '';
+    const response = await fetch(`/conversations/${getSessionId()}/agent-messages${params}`);
+    const data = await response.json();
+    for (const m of data.messages || []) {
+      appendAgentMessage(m.text);
+      agentMessagesSince = m.created_at;
+    }
+  } catch (error) {
+    // Best-effort — a failed poll just tries again next interval.
+  }
+}
+
+function startAgentMessagePolling() {
+  if (agentPollTimer) return;
+  agentMessagesSince = new Date().toISOString();
+  agentPollTimer = setInterval(pollAgentMessages, AGENT_POLL_MS);
+}
+
+function stopAgentMessagePolling() {
+  if (agentPollTimer) clearInterval(agentPollTimer);
+  agentPollTimer = null;
+}
 
 function armInactivityTimer() {
   clearInactivityTimer();
@@ -139,12 +222,54 @@ function appendImageMessage(sender, url) {
   msg.appendChild(img);
   chatBody.appendChild(msg);
   chatBody.scrollTop = chatBody.scrollHeight;
-  // No vision analysis on our side — this just threads a text marker into
-  // history so the bot's reply at least knows a photo was shared.
+  // Threads a text marker into history so later turns can still find this
+  // photo was shared (e.g. for evidence_url on a ticket raised afterward).
+  // The actual vision analysis — app.py reading the file and attaching it
+  // to the Gemini call — only happens for the turn that's shared right
+  // now (see app.py's load_current_photo), not every time this marker is
+  // found in history again.
   history.push({ sender, text: `[Shared a photo: ${url}]` });
 }
 
-if (chatBody && chatBody.children.length === 0) {
+const _PHOTO_MARKER_RE = /\[Shared a photo: (\S+)\]/;
+
+// #3 on the QA list: a reload within the same browser/WebView session
+// (sessionStorage intact) always showed a blank chat with the welcome
+// message again, even though the real conversation was sitting in
+// Postgres the whole time (dashboard_db.record_turn persists every
+// turn) — it just never got read back. An existing session_id here
+// means this is a continuing session, not a first-ever visit, so fetch
+// and replay the real history instead of starting over.
+async function restoreHistoryOrShowWelcome() {
+  const existingSessionId = sessionStorage.getItem('astro_session_id');
+  if (existingSessionId) {
+    try {
+      const response = await fetch(`/history/${existingSessionId}`);
+      const data = await response.json();
+      if (data.messages && data.messages.length > 0) {
+        for (const m of data.messages) {
+          const match = m.role === 'user' ? m.text.match(_PHOTO_MARKER_RE) : null;
+          if (match) {
+            appendImageMessage('user', match[1]);
+          } else if (m.role === 'agent') {
+            appendAgentMessage(m.text);
+          } else {
+            appendMessage(m.role, m.text);
+          }
+        }
+        hasStartedConversation = true;
+        if (data.has_ticket) {
+          hasOpenTicket = true;
+          startAgentMessagePolling();
+        }
+        return;
+      }
+    } catch (error) {
+      // Best-effort — fall through to the normal welcome below rather
+      // than leaving the chat stuck on a blank screen.
+    }
+  }
+
   appendMessage('bot', buildWelcomeMessage());
   // Session-lifecycle pair with consulation_ended (closeChat below) —
   // spelling/field names match the analytics team's own event schema
@@ -154,6 +279,10 @@ if (chatBody && chatBody.children.length === 0) {
     event_timestamp: new Date().toISOString(),
     event_type: 'app',
   });
+}
+
+if (chatBody && chatBody.children.length === 0) {
+  restoreHistoryOrShowWelcome();
 }
 
 // Shown the moment the visitor's message goes out, removed the moment a
@@ -229,6 +358,11 @@ async function sendToBot(text) {
       }
     }
 
+    if (data.ticket_raised && !hasOpenTicket) {
+      hasOpenTicket = true;
+      startAgentMessagePolling();
+    }
+
     if (data.show_feedback) {
       showFeedbackPrompt(data.session_id);
     } else {
@@ -268,6 +402,10 @@ async function sendMessage(overrideText) {
 
   appendMessage('user', text);
   chatInput.value = '';
+  // A programmatic .value clear doesn't fire 'input', so the listener
+  // above never sees this — set it directly or the send button would
+  // stay enabled-looking with an empty field right after sending.
+  sendButton.disabled = true;
   await sendToBot(text);
 }
 
@@ -276,20 +414,37 @@ async function handlePhotoUpload(file) {
   const formData = new FormData();
   formData.append('file', file);
 
+  // #7 on the QA list ("chat breaks when multiple images are uploaded"):
+  // the picker is single-select, but a fast double-tap on the camera
+  // button (or a native file picker that fires 'change' more than once)
+  // could still start two overlapping uploads — each with its own
+  // typing indicator and its own sendToBot call racing the other's. Lock
+  // the button for the whole upload+reply round trip so that can't happen.
+  photoBtn.disabled = true;
   try {
     const response = await fetch('/upload', { method: 'POST', body: formData });
     const data = await response.json();
     if (!data.url) throw new Error('upload failed');
     appendImageMessage('user', data.url);
+    // Deliberately NOT presuming what the photo is for (face/palm reading,
+    // a payment screenshot, evidence for a complaint, etc.) — the backend
+    // now actually sends the image itself to Gemini for a real look
+    // (app.py's ask() + agent/orchestrator.py), so the model figures out
+    // what's in it and responds accordingly instead of the old hardcoded
+    // "face or palm reading" assumption forcing every photo down the same
+    // path regardless of what it actually shows.
+    //
     // The marker also needs to be in the outgoing question text itself, not
     // just history — sendToBot's history payload excludes the message
     // currently being sent (history.slice(0, -1)), so a marker only pushed
     // via appendImageMessage would never actually reach the backend for
     // THIS turn. Embedding it here too means find_last_attachment_url()
     // can find it either way.
-    await sendToBot(`I just shared a photo — can you connect me with someone for a face or palm reading based on it? [Shared a photo: ${data.url}]`);
+    await sendToBot(`[Shared a photo: ${data.url}]`);
   } catch (error) {
     appendMessage('bot', "Sorry, I couldn't upload that photo — please try again.");
+  } finally {
+    photoBtn.disabled = false;
   }
 }
 
@@ -484,6 +639,7 @@ const PROFILE_DEEPLINK = 'astrolokal://BottomTabs?screen=Profile';
 // same action, native can tell them apart.
 function closeChat(deeplink = PROFILE_DEEPLINK) {
   clearInactivityTimer();
+  stopAgentMessagePolling();
   sendNativeAction('close_webview', { deeplink, source: 'chat_bot' });
   // Session-lifecycle pair with consulation_started above — fired from
   // here (not a specific button) since this is the one place the chat
@@ -576,9 +732,26 @@ function renderConnectCard(action) {
   chatBody.scrollTop = chatBody.scrollHeight;
 }
 
-sendButton.addEventListener('click', () => sendMessage());
+// #1 on the QA list: the send button looked identically "live" whether
+// or not there was anything to send — toggle its real disabled state (and
+// the .send-btn:disabled styling, styles.css) off the input itself.
+sendButton.disabled = !chatInput.value.trim();
+chatInput.addEventListener('input', () => {
+  sendButton.disabled = !chatInput.value.trim();
+});
+
+sendButton.addEventListener('click', () => {
+  sendMessage();
+  // #12: without this, some mobile WebViews drop focus (and dismiss the
+  // keyboard) the moment the DOM updates from clearing chatInput.value —
+  // explicitly re-focusing keeps the keyboard up so the visitor can just
+  // keep typing their next message.
+  chatInput.focus();
+});
 chatInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') sendMessage();
+  if (event.key !== 'Enter') return;
+  sendMessage();
+  chatInput.focus();
 });
 
 // The cross in the header — same close_webview action as the feedback

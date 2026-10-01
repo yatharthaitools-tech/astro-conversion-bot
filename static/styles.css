@@ -28,7 +28,7 @@ button, input { font: inherit; }
    request, just always shown rather than opened/closed. */
 .chat-modal {
   width: min(420px, 100vw);
-  height: min(680px, 100vh);
+  height: min(680px, var(--app-height, 100vh));
   background: var(--cream);
   border-radius: var(--radius);
   box-shadow: 0 24px 60px rgba(42, 28, 20, 0.18);
@@ -159,6 +159,23 @@ button, input { font: inherit; }
   border-bottom-left-radius: 6px;
   box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
 }
+/* A real human agent's reply, synced in from Zoho (#3) — visually
+   distinct from Tara's own bubble so it's obvious a person, not the bot,
+   is now talking; a small label sits above it instead of an avatar. */
+.message.agent {
+  background: #eef6f2;
+  border: 1px solid rgba(46, 139, 87, 0.25);
+  color: var(--ink);
+  border-bottom-left-radius: 6px;
+  box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
+}
+.agent-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #2e8b57;
+  margin: 2px 0 4px 2px;
+  align-self: flex-start;
+}
 
 /* Bot replies (plain text + the typing indicator) sit in a row next to
    a small Tara avatar — reads as "someone" replying, not a wall of
@@ -270,6 +287,7 @@ button, input { font: inherit; }
 }
 .photo-btn:hover { background: rgba(255, 111, 61, 0.1); }
 .photo-btn:active { transform: scale(0.94); }
+.photo-btn:disabled { opacity: 0.45; cursor: default; }
 .text-input {
   flex: 1;
   border: 1px solid var(--line);
@@ -302,6 +320,12 @@ button, input { font: inherit; }
 }
 .send-btn:hover { box-shadow: 0 4px 14px rgba(232, 83, 47, 0.38); }
 .send-btn:active { transform: scale(0.92); }
+.send-btn:disabled {
+  background: var(--line);
+  color: rgba(42, 28, 20, 0.35);
+  box-shadow: none;
+  cursor: default;
+}
 
 /* --- Inline "connect with a top astrologer" card — the fixed design
    reference image itself (static/avatars/connect-card.jpg), with real
@@ -490,7 +514,33 @@ button, input { font: inherit; }
   html, body { display: block; }
   .chat-modal {
     width: 100%;
-    height: 100vh;
+    /* Plain 100vh ignores the on-screen keyboard — on iOS it leaves a
+       blank gap between the input bar and the keyboard, and on others it
+       recalculates abruptly on open/close, causing the whole layout to
+       flicker/jump. --app-height is kept in sync with the REAL visible
+       area by script.js's visualViewport listener; 100vh is just the
+       fallback for a browser with no visualViewport support at all. */
+    height: var(--app-height, 100vh);
     border-radius: 0;
   }
 }
+
+/* #4: shown when the device loses internet connectivity mid-chat
+   (navigator.onLine/online/offline listeners in script.js) — without
+   this, a message just silently fails with a generic "I don't have
+   information" reply, which reads as the bot being wrong rather than
+   the network being down. */
+.offline-banner {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #fff3e6;
+  border-bottom: 1px solid rgba(232, 83, 47, 0.18);
+  color: var(--sun-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+.offline-banner.visible { display: flex; }

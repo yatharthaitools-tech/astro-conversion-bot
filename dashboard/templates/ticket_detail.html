@@ -39,6 +39,22 @@
         <h2>Details</h2>
         <div class="side-field"><span class="label">User</span><span class="mono">{{ ticket.user_id }}</span></div>
         <div class="side-field"><span class="label">LTV tier</span>{{ ticket.ltv_tier or '—' }}</div>
+        <div class="side-field"><span class="label">Language</span>{{ language_codes.get(ticket.language, ticket.language or '—') }}</div>
+        <div class="side-field">
+          <span class="label">Assigned to</span>
+          {% if current_user.role in ('admin', 'support_agent') %}
+          <form method="post" class="inline-form">
+            <select name="assigned_admin_id" onchange="this.form.submit()">
+              <option value="" {{ 'selected' if not ticket.assigned_admin_id }}>Unassigned</option>
+              {% for a in assignable_admins %}
+                <option value="{{ a.id }}" {{ 'selected' if ticket.assigned_admin_id == a.id }}>{{ a.email }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% else %}
+            {{ ticket.assigned_admin_email or 'Unassigned' }}
+          {% endif %}
+        </div>
         {% if ticket.zoho_ticket_id %}
         <div class="side-field"><span class="label">Zoho ticket</span><span class="mono">{{ ticket.zoho_ticket_id }}</span></div>
         {% endif %}
@@ -54,6 +70,7 @@
         {% endif %}
       </div>
 
+      {% if current_user.role in ('admin', 'support_agent') %}
       <form method="post" class="panel">
         <h2>Update status</h2>
         <select name="status">
@@ -64,6 +81,7 @@
         <textarea name="note" placeholder="Add a note (optional)" rows="3"></textarea>
         <button type="submit" class="ticket-update-btn">Update</button>
       </form>
+      {% endif %}
     </div>
   </div>
 {% endif %}

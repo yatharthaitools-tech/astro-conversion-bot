@@ -25,19 +25,32 @@ def _history_to_contents(history):
     return contents
 
 
-def run_chat_turn(question: str, history, ctx, turn_number: int, past_warmup: bool):
+def run_chat_turn(question: str, history, ctx, turn_number: int, past_warmup: bool,
+                   image_data: str = None, image_mime: str = None):
     """Returns answer text, or None if Gemini is unconfigured/unavailable
     (callers fall back to a rule-based responder). Side effects — a UI
     action to surface, whether the thread should close, the tool trace —
     land on ctx (ctx.ui_action, ctx.show_feedback, ctx.trace); the caller
     reads those directly off the same ctx object passed in.
+
+    image_data/image_mime (base64 str + a real image/* mime type, from
+    app.py's load_current_photo) attach the actual photo the visitor just
+    shared to THIS turn's content, so the model genuinely looks at it
+    instead of only ever seeing the '[Shared a photo: <url>]' text marker
+    — that text alone told the model nothing about what's actually in the
+    picture, which is what let a hardcoded client-side assumption (the old
+    "must be for a face/palm reading" framing this replaced) stand in for
+    real understanding.
     """
     if not client.is_configured():
         return None
 
     system_instruction = prompt.build_system_prompt(ctx.language, turn_number, past_warmup, ctx.user_name)
     contents = _history_to_contents(history)
-    contents.append({"role": "user", "parts": [{"text": question}]})
+    current_parts = [{"text": question}]
+    if image_data and image_mime:
+        current_parts.append({"inlineData": {"mimeType": image_mime, "data": image_data}})
+    contents.append({"role": "user", "parts": current_parts})
 
     for _ in range(MAX_ITERATIONS):
         try:

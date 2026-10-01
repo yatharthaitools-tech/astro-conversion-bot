@@ -1,3 +1,6 @@
+import base64
+import hmac
+import mimetypes
 import os
 import re
 import uuid
@@ -10,18 +13,28 @@ load_dotenv()
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
 from integrations import recommend_flow_client, s3_client
+from dashboard import auth as dashboard_auth
 from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
-# Only needed for the admin dashboard's login session cookie — the main
-# chat widget itself has no session/cookie state. Falls back to a
-# per-process random key (dev-only behavior: sessions won't survive a
-# restart) rather than refusing to start when ADMIN_SESSION_SECRET isn't set.
-app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or os.urandom(32)
 app.register_blueprint(dashboard_bp)
 dashboard_db.init_db()
+# admin_users/dashboard_config must exist first (init_db above), and the
+# secret needs the table too — hence this order. Only needed for the
+# admin dashboard's login session cookie — the main chat widget itself
+# has no session/cookie state. A per-process random key broke logins
+# under >1 worker/pod: whichever process signed the login cookie was the
+# only one that could verify it, so a request landing on a different
+# worker looked like an instant logout. get_or_create_session_secret
+# fixes that at the root — a real random value generated once and shared
+# via Postgres, not derived from anything else — rather than refusing to
+# start when ADMIN_SESSION_SECRET isn't set.
+app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or dashboard_db.get_or_create_session_secret()
+# Seeds the first admin_users row from ADMIN_EMAIL/ADMIN_PASSWORD — a
+# no-op once any account exists, see dashboard/auth.py's bootstrap().
+dashboard_auth.bootstrap()
 
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
 ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -180,8 +193,6 @@ quick_replies = [
     {"id": "money", "text": "Facing money problems", "icon": _ICON_COIN},
 ]
 
-messages = []
-
 
 def normalize_text(text: str) -> str:
     # \w doesn't match Indic combining vowel signs/virama (Unicode category
@@ -260,7 +271,6 @@ def home():
     return render_template(
         'index.html',
         quick_replies=quick_replies,
-        messages=messages,
         user_id=request.args.get('user_id', ''),
         oauth_token=request.args.get('oauth_token', ''),
         user_name=request.args.get('user_name', ''),
@@ -302,6 +312,40 @@ def find_last_attachment_url(question: str, history: list):
     return None
 
 
+def load_current_photo(question: str):
+    """Only for a photo shared in THIS exact turn (marker on `question`
+    itself, not history) — the model should actually look at a photo once,
+    when it's shared, not re-analyze the same bytes on every later turn
+    just because find_last_attachment_url() can still find the marker in
+    old history for evidence_url purposes. Returns (base64_data, mime_type)
+    or (None, None) — never raises; a missing/unreadable file just means
+    no image reaches the model this turn, same as if none was shared."""
+    match = _ATTACHMENT_MARKER_RE.search(question)
+    if not match:
+        return None, None
+    url = match.group(1)
+
+    static_prefix = app.static_url_path + '/'
+    if not url.startswith(static_prefix):
+        return None, None
+    relative_path = url[len(static_prefix):]
+    file_path = os.path.join(app.static_folder, relative_path)
+    # Never let a crafted marker path escape static/ (e.g. '../../etc/passwd').
+    if not os.path.abspath(file_path).startswith(os.path.abspath(app.static_folder) + os.sep):
+        return None, None
+
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if not mime_type or not mime_type.startswith('image/'):
+        return None, None
+
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+    except OSError:
+        return None, None
+    return base64.b64encode(data).decode('ascii'), mime_type
+
+
 # At least this many user turns happen before the agent's own
 # trigger_recommend_astrologer CTA shows for a general concern — see
 # agent/prompt.py's warmup clause. Prediction questions and explicit
@@ -325,6 +369,7 @@ def ask():
 
     ctx = agent_context.resolve_session(payload, session_id, lang, history)
     ctx.last_attachment_url = find_last_attachment_url(question, history)
+    image_data, image_mime = load_current_photo(question)
     dashboard_db.ensure_conversation(session_id, ctx.user_id)
 
     if is_prediction_intent(question, lang):
@@ -337,7 +382,10 @@ def ask():
         answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
         source = 'prediction_deflect'
     else:
-        answer = agent_orchestrator.run_chat_turn(question, history, ctx, turn_number, past_warmup)
+        answer = agent_orchestrator.run_chat_turn(
+            question, history, ctx, turn_number, past_warmup,
+            image_data=image_data, image_mime=image_mime,
+        )
         source = 'agent'
         if not answer:
             # Gemini unconfigured or the whole tool loop failed — everything
@@ -378,7 +426,49 @@ def ask():
         'language': lang,
         'action': ctx.ui_action,
         'show_feedback': ctx.show_feedback,
+        # Tells the client a ticket now exists for this session — that's
+        # its cue to start polling agent-messages below for a live reply
+        # once a real CS agent picks it up in Zoho (see #3's webhook sync,
+        # /webhooks/zoho). Client-side this only ever turns polling ON,
+        # never off mid-session — see static/script.js's hasOpenTicket.
+        'ticket_raised': ctx.ticket_raised,
     })
+
+
+@app.route('/history/<session_id>')
+def get_history(session_id):
+    """#3 on the QA list — 'chat history is not getting saved' — it
+    actually always was (record_turn persists every turn), it just never
+    got read back: the page always rendered a blank chatBody and showed
+    the welcome message fresh, even on a reload with the exact same
+    session_id still in sessionStorage. Polled once by script.js on load
+    (only when a session_id already exists, i.e. this isn't a brand-new
+    visit) to restore the real conversation instead of starting over.
+    Same visitor-facing trust model as /conversations/<id>/agent-messages
+    above — whoever has this session_id can read it."""
+    conv = dashboard_db.get_conversation(session_id)
+    if not conv:
+        return jsonify({'messages': [], 'has_ticket': False})
+    return jsonify({
+        'messages': [
+            {'role': m['role'], 'text': m['text']} for m in conv['messages']
+        ],
+        'has_ticket': dashboard_db.session_has_ticket(session_id),
+    })
+
+
+@app.route('/conversations/<session_id>/agent-messages')
+def get_agent_messages(session_id):
+    """Polled by the visitor's own chat widget (static/script.js) while a
+    ticket is open, so a real Zoho agent's reply shows up in the SAME
+    chat window instead of the visitor needing a separate channel — see
+    dashboard/db.py's get_new_agent_messages docstring for the trust
+    model (same as every other visitor-facing route here: whoever has
+    this session_id can read it, there's no stronger per-visitor auth to
+    check against)."""
+    since = request.args.get('since') or None
+    messages = dashboard_db.get_new_agent_messages(session_id, since)
+    return jsonify({'messages': messages})
 
 
 @app.route('/feedback', methods=['POST'])
@@ -412,6 +502,69 @@ def track_event():
         event_data = {}
     dashboard_db.record_event(session_id, user_id, event_type, event_data)
     return jsonify({'ok': True})
+
+
+ZOHO_WEBHOOK_SECRET = os.environ.get('ZOHO_WEBHOOK_SECRET', '')
+
+
+@app.route('/webhooks/zoho', methods=['POST'])
+def zoho_webhook():
+    """#3's inbound half — an agent's status/category/reply change in Zoho
+    Desk reflects back here instead of needing this dashboard AND Zoho
+    open side by side. Zoho Desk's Webhooks feature (Setup > Automation >
+    Webhooks) lets YOU define the outgoing JSON body as a merge-field
+    template, so this endpoint's contract is whatever you configure there
+    to point at this URL — set the body to exactly this shape (adjust the
+    ${...} merge fields to match your actual Zoho Desk field picker, same
+    "verify against your real portal" caveat as zoho_client.py's category
+    map and customFields):
+        {
+          "zoho_ticket_id": "${Ticket.id}",
+          "status": "${Ticket.status}",          // optional
+          "category": "${Ticket.category}",       // optional
+          "sub_category": "${Ticket.subCategory}",// optional
+          "comment": "${Comment.content}",        // optional — a new reply to sync into the visitor's chat
+          "agent_name": "${Comment.commentedBy}"  // optional
+        }
+    Add a custom header (or query param) carrying ZOHO_WEBHOOK_SECRET's
+    value and this route rejects anything that doesn't match it — Zoho's
+    webhook setup lets you add custom headers to the outgoing call.
+    Every field but zoho_ticket_id is optional and independently applied;
+    an unknown zoho_ticket_id or a status that isn't one of
+    dashboard.db.TICKET_STATUSES is just ignored rather than erroring —
+    Zoho's own retry-on-non-2xx behavior isn't something a malformed
+    payload should trigger repeatedly."""
+    provided_secret = request.headers.get('X-Webhook-Secret') or request.args.get('secret') or ''
+    if not ZOHO_WEBHOOK_SECRET or not hmac.compare_digest(provided_secret, ZOHO_WEBHOOK_SECRET):
+        return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    zoho_ticket_id = str(payload.get('zoho_ticket_id') or '').strip()
+    if not zoho_ticket_id:
+        return jsonify({'ok': False, 'error': 'zoho_ticket_id is required'}), 400
+
+    ticket = dashboard_db.get_ticket_by_zoho_id(zoho_ticket_id)
+    if not ticket:
+        # Not necessarily an error — could be a webhook firing for a ticket
+        # this bot never raised (e.g. a manually-created Zoho ticket if
+        # the same webhook is reused department-wide). Ack anyway so Zoho
+        # doesn't retry.
+        return jsonify({'ok': True, 'matched': False})
+
+    status = str(payload.get('status') or '').strip()
+    if status in dashboard_db.TICKET_STATUSES:
+        dashboard_db.update_ticket_status(ticket['id'], status, note='Synced from Zoho')
+
+    category = payload.get('category')
+    sub_category = payload.get('sub_category')
+    if category or sub_category:
+        dashboard_db.update_ticket_fields(ticket['id'], category=category, sub_category=sub_category)
+
+    comment = str(payload.get('comment') or '').strip()
+    if comment and ticket.get('session_id'):
+        dashboard_db.record_agent_message(ticket['session_id'], comment, payload.get('agent_name'))
+
+    return jsonify({'ok': True, 'matched': True})
 
 
 if __name__ == '__main__':

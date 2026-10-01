@@ -36,6 +36,7 @@ class SessionContext:
     trace: list = field(default_factory=list)
     ui_action: Optional[dict] = None  # set by a tool handler that opened a card/sheet
     show_feedback: bool = False  # set by mark_issue_resolved — closes the thread client-side
+    ticket_raised: bool = False  # set by create_support_ticket/reopen_ticket — tells the client to start polling for a live agent reply (see app.py's /conversations/<id>/agent-messages)
 
 
 def _real_identity_from(payload: dict) -> tuple:
