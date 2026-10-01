@@ -193,8 +193,6 @@ quick_replies = [
     {"id": "money", "text": "Facing money problems", "icon": _ICON_COIN},
 ]
 
-messages = []
-
 
 def normalize_text(text: str) -> str:
     # \w doesn't match Indic combining vowel signs/virama (Unicode category
@@ -273,7 +271,6 @@ def home():
     return render_template(
         'index.html',
         quick_replies=quick_replies,
-        messages=messages,
         user_id=request.args.get('user_id', ''),
         oauth_token=request.args.get('oauth_token', ''),
         user_name=request.args.get('user_name', ''),
@@ -435,6 +432,28 @@ def ask():
         # /webhooks/zoho). Client-side this only ever turns polling ON,
         # never off mid-session — see static/script.js's hasOpenTicket.
         'ticket_raised': ctx.ticket_raised,
+    })
+
+
+@app.route('/history/<session_id>')
+def get_history(session_id):
+    """#3 on the QA list — 'chat history is not getting saved' — it
+    actually always was (record_turn persists every turn), it just never
+    got read back: the page always rendered a blank chatBody and showed
+    the welcome message fresh, even on a reload with the exact same
+    session_id still in sessionStorage. Polled once by script.js on load
+    (only when a session_id already exists, i.e. this isn't a brand-new
+    visit) to restore the real conversation instead of starting over.
+    Same visitor-facing trust model as /conversations/<id>/agent-messages
+    above — whoever has this session_id can read it."""
+    conv = dashboard_db.get_conversation(session_id)
+    if not conv:
+        return jsonify({'messages': [], 'has_ticket': False})
+    return jsonify({
+        'messages': [
+            {'role': m['role'], 'text': m['text']} for m in conv['messages']
+        ],
+        'has_ticket': dashboard_db.session_has_ticket(session_id),
     })
 
 

@@ -644,6 +644,17 @@ def get_ticket_by_zoho_id(zoho_ticket_id: str) -> dict:
             return _to_dict(cur.fetchone())
 
 
+def session_has_ticket(session_id: str) -> bool:
+    """Whether this session ever raised a ticket — used to resume agent-
+    message polling after a page reload restores history (see app.py's
+    /history/<session_id>), since the client's own hasOpenTicket flag is
+    just an in-memory JS variable that doesn't survive a reload."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM tickets WHERE session_id = %s LIMIT 1", (session_id,))
+            return cur.fetchone() is not None
+
+
 def get_latest_resolved_ticket(user_id: str) -> dict:
     """Most recently Resolved/Closed ticket for this visitor — what #5's
     72-hour reopen window checks against. None if they have no
