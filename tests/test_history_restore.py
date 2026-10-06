@@ -38,7 +38,9 @@ def test_history_returns_real_conversation(client):
     resp = client.get("/history/sess-restore")
     data = resp.get_json()
     assert len(data["messages"]) == 2
-    assert data["messages"][0] == {"role": "user", "text": "what's my recharge status"}
+    assert data["messages"][0]["role"] == "user"
+    assert data["messages"][0]["text"] == "what's my recharge status"
+    assert "created_at" in data["messages"][0]
     assert data["messages"][1]["role"] == "bot"
     assert data["has_ticket"] is False
 
