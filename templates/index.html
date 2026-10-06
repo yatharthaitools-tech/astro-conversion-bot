@@ -11,11 +11,10 @@
   </head>
   <body data-user-id="{{ user_id }}" data-oauth-token="{{ oauth_token }}" data-user-name="{{ user_name }}" data-ltv="{{ ltv }}">
     <div class="chat-modal" role="dialog" aria-label="Chat with AstroLokal">
-      <div class="offline-banner" id="offlineBanner">You're offline — messages will send once you're back online.</div>
       <div class="chat-modal-header">
         <div class="brand-mark" aria-hidden="true">
           <img src="{{ url_for('static', filename='avatars/tara-avatar.png') }}" alt="" width="40" height="40" />
-          <span class="brand-status" aria-hidden="true"></span>
+          <span class="brand-status" id="brandStatus" aria-hidden="true"></span>
         </div>
         <div class="chat-modal-title">
           <div class="title-main">AstroLokal</div>
@@ -27,6 +26,13 @@
           </svg>
         </button>
       </div>
+
+      <!-- Deliberately AFTER the header, not before it: the header alone
+           carries the safe-area-top padding that clears a notch/Dynamic
+           Island on a full-screen mobile layout — a banner placed above
+           it would render partly underneath the notch/status bar with no
+           clearance of its own. -->
+      <div class="offline-banner" id="offlineBanner">You're offline — messages will send once you're back online.</div>
 
       <div class="chat-body" id="chatBody"></div>
 

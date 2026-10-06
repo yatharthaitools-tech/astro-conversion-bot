@@ -6,35 +6,46 @@ const photoInput = document.getElementById('photoInput');
 const quickReplies = document.getElementById('quickReplies');
 const closeBtn = document.getElementById('closeBtn');
 const offlineBanner = document.getElementById('offlineBanner');
+const brandStatus = document.getElementById('brandStatus');
 
-// QA list #5/#6/#11: a plain 100vh in CSS ignores the on-screen keyboard
-// — iOS leaves a blank gap between the input bar and the keyboard
-// (visualViewport shrinks, the page doesn't), and other browsers
-// recalculate 100vh abruptly on keyboard open/close, causing the whole
-// layout to flicker/jump. Keeping --app-height in sync with the REAL
-// visible area (styles.css's .chat-modal reads it) fixes both at the
-// root instead of patching each symptom separately.
-function syncAppHeight() {
-  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-  document.documentElement.style.setProperty('--app-height', `${vh}px`);
+// QA list — iOS blank space below the input / flicker-shift on keyboard
+// open / attachment row misplaced on keyboard toggle: all three traced
+// to the same cause. iOS leaves html/body's 100vh alone when the
+// keyboard opens and instead tries to SCROLL the page to keep the
+// focused input visible; styles.css now pins html/body with
+// position:fixed so there's no room left to scroll, which leaves
+// --app-height (real visible height) and --app-offset-top (how far iOS
+// still nudges the visual viewport's own origin) as the only two values
+// that actually need to track the keyboard. Both come from the same
+// visualViewport object; 'scroll' fires for the offset shifting even
+// when 'resize' doesn't.
+function syncViewport() {
+  const vv = window.visualViewport;
+  const height = vv ? vv.height : window.innerHeight;
+  const offsetTop = vv ? vv.offsetTop : 0;
+  document.documentElement.style.setProperty('--app-height', `${height}px`);
+  document.documentElement.style.setProperty('--app-offset-top', `${offsetTop}px`);
 }
-syncAppHeight();
+syncViewport();
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', syncAppHeight);
+  window.visualViewport.addEventListener('resize', syncViewport);
+  window.visualViewport.addEventListener('scroll', syncViewport);
 } else {
-  window.addEventListener('resize', syncAppHeight);
+  window.addEventListener('resize', syncViewport);
 }
 
-// QA list #4: a lost connection mid-chat otherwise just looks like the
-// bot giving a wrong/generic answer (sendToBot's catch block) — this
-// names the actual problem instead.
-function syncOfflineBanner() {
-  if (!offlineBanner) return;
-  offlineBanner.classList.toggle('visible', !navigator.onLine);
+// QA list: a lost connection mid-chat otherwise just looks like the bot
+// giving a wrong/generic answer (sendToBot's catch block), and the
+// header's "online" dot kept showing green the whole time regardless of
+// actual connectivity — both now track the same online/offline signal.
+function syncConnectivity() {
+  const offline = !navigator.onLine;
+  if (offlineBanner) offlineBanner.classList.toggle('visible', offline);
+  if (brandStatus) brandStatus.classList.toggle('offline', offline);
 }
-syncOfflineBanner();
-window.addEventListener('online', syncOfflineBanner);
-window.addEventListener('offline', syncOfflineBanner);
+syncConnectivity();
+window.addEventListener('online', syncConnectivity);
+window.addEventListener('offline', syncConnectivity);
 
 // Tara's avatar photo, reused next to every plain-text bot reply and
 // the typing indicator — same image as the header's own avatar
