@@ -87,6 +87,11 @@ button, input { font: inherit; }
   opacity: 0.5;
   animation: status-ping 2.4s infinite;
 }
+/* QA: the dot stayed green even while the device was actually offline —
+   toggled via script.js's syncConnectivity, same online/offline signal
+   as .offline-banner. */
+.brand-status.offline { background: #9aa0a6; }
+.brand-status.offline::after { animation: none; opacity: 0; }
 @keyframes status-ping {
   0% { transform: scale(1); opacity: 0.5; }
   70%, 100% { transform: scale(1.9); opacity: 0; }
@@ -297,6 +302,12 @@ button, input { font: inherit; }
   color: var(--ink);
   min-width: 0;
   transition: box-shadow 0.15s, border-color 0.15s;
+  /* QA: the field itself could be picked up and dragged around — WebKit
+     lets any element be natively drag-started by default
+     (-webkit-user-drag: auto). An <input> never needs to BE a drag
+     source itself; only its text selection/cursor should move. */
+  -webkit-user-drag: none;
+  touch-action: manipulation;
 }
 .text-input:focus {
   outline: none;
@@ -511,17 +522,34 @@ button, input { font: inherit; }
 }
 
 @media (max-width: 480px) {
-  html, body { display: block; }
+  html, body {
+    display: block;
+    /* iOS leaves 100vh alone when the keyboard opens and instead tries to
+       scroll the PAGE to keep the focused input in view — on a page
+       that's already exactly one screen tall, that scroll attempt is
+       what actually produces the blank gap below the input bar and the
+       flicker/shift as it settles. Pinning html/body to the viewport
+       removes any room for the OS to scroll in the first place; the
+       keyboard-aware height below (--app-height) is the only thing that
+       still needs to move. */
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
   .chat-modal {
     width: 100%;
     /* Plain 100vh ignores the on-screen keyboard — on iOS it leaves a
        blank gap between the input bar and the keyboard, and on others it
        recalculates abruptly on open/close, causing the whole layout to
        flicker/jump. --app-height is kept in sync with the REAL visible
-       area by script.js's visualViewport listener; 100vh is just the
-       fallback for a browser with no visualViewport support at all. */
+       area by script.js's syncViewport (visualViewport's resize/scroll);
+       100vh is just the fallback for a browser with no visualViewport
+       support at all. --app-offset-top compensates for iOS additionally
+       shifting the visual viewport's own origin while the keyboard is up.
+    */
     height: var(--app-height, 100vh);
     border-radius: 0;
+    transform: translateY(var(--app-offset-top, 0px));
   }
 }
 

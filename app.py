@@ -1,18 +1,23 @@
 import base64
 import hmac
+import logging
 import mimetypes
 import os
 import re
+import urllib.parse
 import uuid
+import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, url_for
 from werkzeug.utils import secure_filename
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
-from integrations import recommend_flow_client, s3_client
+from integrations import photo_storage, recommend_flow_client, s3_client
 from dashboard import auth as dashboard_auth
 from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
@@ -288,9 +293,22 @@ def upload():
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         return jsonify({'error': 'Unsupported file type'}), 400
 
+    # S3 when configured — local disk doesn't survive a pod restart/
+    # redeploy, and is invisible across replicas behind a load balancer,
+    # which is exactly what "photo not displayed / broken image" looks
+    # like in a multi-pod production deployment (see photo_storage.py's
+    # own docstring). Local disk stays the fallback for local dev.
+    if photo_storage.is_configured():
+        mime_type, _ = mimetypes.guess_type(file.filename)
+        try:
+            url = photo_storage.save(file, ext, mime_type or 'application/octet-stream')
+            return jsonify({'url': url})
+        except Exception:
+            logger.exception('Photo upload to S3 failed')
+            return jsonify({'error': 'Upload failed'}), 502
+
     safe_name = f"{uuid.uuid4().hex}.{ext}"
     file.save(os.path.join(UPLOAD_FOLDER, secure_filename(safe_name)))
-
     return jsonify({'url': url_for('static', filename=f'uploads/{safe_name}')})
 
 
@@ -312,6 +330,12 @@ def find_last_attachment_url(question: str, history: list):
     return None
 
 
+_S3_UPLOADS_HOST = (
+    f"{photo_storage.S3_BUCKET}.s3.{photo_storage.AWS_REGION}.amazonaws.com"
+    if photo_storage.is_configured() else None
+)
+
+
 def load_current_photo(question: str):
     """Only for a photo shared in THIS exact turn (marker on `question`
     itself, not history) — the model should actually look at a photo once,
@@ -326,24 +350,40 @@ def load_current_photo(question: str):
     url = match.group(1)
 
     static_prefix = app.static_url_path + '/'
-    if not url.startswith(static_prefix):
-        return None, None
-    relative_path = url[len(static_prefix):]
-    file_path = os.path.join(app.static_folder, relative_path)
-    # Never let a crafted marker path escape static/ (e.g. '../../etc/passwd').
-    if not os.path.abspath(file_path).startswith(os.path.abspath(app.static_folder) + os.sep):
-        return None, None
+    if url.startswith(static_prefix):
+        relative_path = url[len(static_prefix):]
+        file_path = os.path.join(app.static_folder, relative_path)
+        # Never let a crafted marker path escape static/ (e.g. '../../etc/passwd').
+        if not os.path.abspath(file_path).startswith(os.path.abspath(app.static_folder) + os.sep):
+            return None, None
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if not mime_type or not mime_type.startswith('image/'):
+            return None, None
+        try:
+            with open(file_path, 'rb') as f:
+                data = f.read()
+        except OSError:
+            return None, None
+        return base64.b64encode(data).decode('ascii'), mime_type
 
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if not mime_type or not mime_type.startswith('image/'):
-        return None, None
+    # photo_storage.py's S3 path (see /upload) — the marker holds a real
+    # https:// presigned URL in this mode, not a /static/... one. Only
+    # ever fetched when its host is OUR OWN configured upload bucket —
+    # `question` ultimately comes from the client, so blindly GETing
+    # whatever URL shows up in the marker would be a textbook SSRF
+    # (a crafted marker pointing at an internal/metadata endpoint).
+    if _S3_UPLOADS_HOST and urllib.parse.urlparse(url).hostname == _S3_UPLOADS_HOST:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException:
+            return None, None
+        mime_type = response.headers.get('Content-Type', '')
+        if not mime_type.startswith('image/'):
+            return None, None
+        return base64.b64encode(response.content).decode('ascii'), mime_type
 
-    try:
-        with open(file_path, 'rb') as f:
-            data = f.read()
-    except OSError:
-        return None, None
-    return base64.b64encode(data).decode('ascii'), mime_type
+    return None, None
 
 
 # At least this many user turns happen before the agent's own
