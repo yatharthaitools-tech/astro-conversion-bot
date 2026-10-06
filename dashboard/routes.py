@@ -39,6 +39,15 @@ def inject_context():
     }
 
 
+def _login_template_context(error=None):
+    return {
+        'error': error,
+        'google_signin_configured': auth.google_signin_configured(),
+        'google_client_id': auth.GOOGLE_CLIENT_ID,
+        'google_login_uri': url_for('dashboard.login_google', _external=True),
+    }
+
+
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if auth.is_logged_in():
@@ -51,7 +60,31 @@ def login():
             auth.log_in(user)
             return redirect(url_for('dashboard.conversations'))
         error = 'Wrong email or password.'
-    return render_template('login.html', error=error)
+    return render_template('login.html', **_login_template_context(error))
+
+
+@bp.route('/login/google', methods=['POST'])
+def login_google():
+    if auth.is_logged_in():
+        return redirect(url_for('dashboard.conversations'))
+
+    # Google's own CSRF protection for the login_uri POST flow: it sets a
+    # g_csrf_token cookie and includes the same value as a form field: a
+    # cross-site form targeting this endpoint can't read/replay OUR
+    # cookie, so a mismatch (or either one missing) means this POST
+    # didn't genuinely come from the sign-in button on our own page.
+    cookie_token = request.cookies.get('g_csrf_token')
+    body_token = request.form.get('g_csrf_token')
+    if not cookie_token or not body_token or cookie_token != body_token:
+        return render_template('login.html', **_login_template_context(
+            'Google sign-in request could not be verified. Please try again.',
+        )), 400
+
+    user, error = auth.authenticate_google(request.form.get('credential', ''))
+    if user:
+        auth.log_in(user)
+        return redirect(url_for('dashboard.conversations'))
+    return render_template('login.html', **_login_template_context(error))
 
 
 @bp.route('/logout', methods=['POST'])

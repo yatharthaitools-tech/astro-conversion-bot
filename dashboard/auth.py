@@ -1,5 +1,6 @@
-"""Per-person admin dashboard logins (email + password) with role-based
-access control, backed by dashboard/db.py's admin_users table.
+"""Per-person admin dashboard logins (email + password, or Google Sign-In)
+with role-based access control, backed by dashboard/db.py's admin_users
+table.
 
 Replaces the old single shared ADMIN_PASSWORD — kept only as a bootstrap
 value now (see bootstrap() below): ADMIN_EMAIL/ADMIN_PASSWORD seed exactly
@@ -12,6 +13,12 @@ Roles (ROLES below) are enforced here via role_required(); routes.py is
 the only caller. 'admin' can do everything including manage other users;
 'support_agent' handles Conversations + Tickets (including updating ticket
 status); 'analyst' gets Analytics plus read-only Conversations/Tickets.
+
+Google Sign-In (authenticate_google() below) is an ALTERNATE way to prove
+you're a given email, not an alternate way to become an admin: it never
+creates an admin_users row by itself. An admin still has to add the
+person's email from the Users page first — Google sign-in just lets them
+log into that existing account without typing a password.
 """
 import os
 import secrets
@@ -24,6 +31,15 @@ from dashboard import db
 
 ROLES = ('admin', 'support_agent', 'analyst')
 ROLE_LABELS = {'admin': 'Admin', 'support_agent': 'Support Agent', 'analyst': 'Analyst'}
+
+# Blank GOOGLE_CLIENT_ID hides the "Sign in with Google" button entirely
+# (login.html checks google_signin_configured()) — same opt-in-by-env-var
+# posture as every other optional integration in this app (Zoho, S3,
+# Redash). GOOGLE_ALLOWED_DOMAIN is a belt-and-suspenders check on top of
+# the admin_users lookup: even a compromised/outside Google account on
+# the wrong domain is rejected before its email is even looked up.
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_ALLOWED_DOMAIN = os.environ.get('GOOGLE_ALLOWED_DOMAIN', 'astrolokal.com').strip().lower()
 
 # A fixed-cost dummy hash checked when an email isn't found, so a login
 # attempt takes roughly the same time whether or not that email exists —
@@ -58,6 +74,48 @@ def authenticate(email: str, password: str) -> dict:
     candidate_hash = user['password_hash'] if user else _DUMMY_HASH
     ok = check_password_hash(candidate_hash, password or '')
     return user if (user and ok) else None
+
+
+def google_signin_configured() -> bool:
+    return bool(GOOGLE_CLIENT_ID)
+
+
+def authenticate_google(id_token_str: str) -> tuple:
+    """Verifies a Google Identity Services ID token and returns
+    (user, error_message) — exactly one of the two is set. Checked in
+    order: the token itself is genuine and meant for OUR client id
+    (verify_oauth2_token raises on anything else — wrong audience, bad
+    signature, expired); Google has verified the email address, not just
+    received it from the identity provider during signup; the email is
+    on the allowed company domain; and only then is it looked up against
+    admin_users — a verified @astrolokal.com Google account that was
+    never added as an admin still can't log in, same as a stranger
+    guessing a password that doesn't exist."""
+    if not google_signin_configured():
+        return None, 'Google sign-in is not configured.'
+
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            id_token_str, google_requests.Request(), GOOGLE_CLIENT_ID,
+        )
+    except ValueError:
+        return None, 'Could not verify your Google sign-in. Please try again.'
+
+    if not claims.get('email_verified'):
+        return None, 'Your Google account email is not verified.'
+
+    email = (claims.get('email') or '').strip().lower()
+    domain = email.rsplit('@', 1)[-1] if '@' in email else ''
+    if domain != GOOGLE_ALLOWED_DOMAIN:
+        return None, f'Only @{GOOGLE_ALLOWED_DOMAIN} Google accounts can sign in here.'
+
+    user = db.get_admin_user_by_email(email)
+    if not user:
+        return None, 'Your Google account is not registered as an admin user. Ask an admin to add you from Users.'
+    return user, None
 
 
 def log_in(user: dict) -> None:

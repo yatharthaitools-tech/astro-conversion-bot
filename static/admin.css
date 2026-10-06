@@ -79,8 +79,23 @@ h2 { font-size: 0.95rem; margin: 0 0 10px; color: rgba(42, 28, 20, 0.7); }
   flex-direction: column;
   gap: 12px;
 }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
 .login-brand { font-weight: 800; font-size: 1.2rem; text-align: center; margin-bottom: 8px; }
 .login-brand span { color: var(--sun-dark); }
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-soft, #8a8a8a);
+  font-size: 0.8rem;
+}
+.login-divider::before, .login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.login-google-btn { display: flex; justify-content: center; }
 .login-input {
   padding: 11px 14px;
   border: 1px solid var(--line);
