@@ -818,6 +818,18 @@ def finalize_coin_credit_attempt(idempotency_key: str, status: str, http_status:
 
 # --- Analytics -----------------------------------------------------------
 
+def _format_duration(seconds) -> str:
+    """None/0 -> '0m 0s'; otherwise 'Xm Ys', or 'Xh Ym' past an hour —
+    whichever the Analytics page's avg-chat-duration stat actually
+    displays, so the page never has to do time math in Jinja."""
+    total = int(round(seconds or 0))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m {secs}s"
+
+
 def _week_month_trend(cur, table: str, date_col: str, resolved_col: str) -> dict:
     """Shared helper: {'weekly': [...], 'monthly': [...]} of {bucket, raised,
     resolved} rows for either tickets or conversations, bucketed by ISO
@@ -947,6 +959,38 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             )
             language_rows = cur.fetchall()
 
+            # Chat duration/length — real columns already on conversations
+            # (first_seen_at/last_seen_at/turn_count), just never
+            # aggregated before. A single-message conversation has a
+            # duration of 0, which is a real answer, not a gap in the
+            # data — no COALESCE-to-fake-a-number here.
+            cur.execute(
+                f"""SELECT AVG(EXTRACT(EPOCH FROM (last_seen_at - first_seen_at))) AS avg_seconds,
+                           AVG(turn_count) AS avg_turns
+                    FROM conversations
+                    WHERE session_id IN (SELECT DISTINCT session_id FROM messages {clause})""", params
+            )
+            duration_row = cur.fetchone()
+
+            # Returning-visitor rate — of the visitors who had a
+            # conversation in this range, what share have EVER had more
+            # than one (all-time, not just within the range: a visitor
+            # who chatted once last month and again today is returning
+            # today even though only today's session is "in range").
+            cur.execute(
+                f"""WITH in_range_users AS (
+                        SELECT DISTINCT user_id FROM conversations
+                        WHERE session_id IN (SELECT DISTINCT session_id FROM messages {clause})
+                    ), session_counts AS (
+                        SELECT user_id, COUNT(*) AS n FROM conversations GROUP BY user_id
+                    )
+                    SELECT
+                        COUNT(*) FILTER (WHERE sc.n > 1) AS returning,
+                        COUNT(*) AS total
+                    FROM in_range_users iru JOIN session_counts sc ON sc.user_id = iru.user_id""", params
+            )
+            returning_row = cur.fetchone()
+
             cur.execute(
                 f"SELECT COUNT(*) AS n FROM messages {clause} AND role = 'bot' AND card_shown = TRUE", params
             )
@@ -1000,11 +1044,22 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
                 stat['ok'] += 1
 
     pct_rated = round(100 * rating_row['n_rated'] / total_convos_all_time, 1) if total_convos_all_time else 0.0
+    pct_returning = (
+        round(100 * returning_row['returning'] / returning_row['total'], 1) if returning_row['total'] else 0.0
+    )
 
     return {
         'total_conversations': total_conversations,
         'total_turns': total_turns,
         'cards_shown': cards_shown,
+        'avg_duration_seconds': duration_row['avg_seconds'],
+        'avg_duration_label': _format_duration(duration_row['avg_seconds']),
+        'avg_turns_per_conversation': (
+            round(duration_row['avg_turns'], 1) if duration_row['avg_turns'] is not None else 0.0
+        ),
+        'returning_visitors': returning_row['returning'],
+        'total_visitors': returning_row['total'],
+        'pct_returning': pct_returning,
         'source_breakdown': [{'source': r['source'] or 'unknown', 'count': r['n']} for r in source_rows],
         'language_breakdown': [{'language': r['last_language'] or 'unknown', 'count': r['n']} for r in language_rows],
         'tool_stats': sorted(

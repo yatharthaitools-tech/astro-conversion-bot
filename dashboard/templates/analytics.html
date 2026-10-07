@@ -45,6 +45,18 @@
     <div class="kpi-value">{{ stats.open_tickets }}</div>
     <div class="kpi-label">open tickets ({{ stats.total_tickets }} total)</div>
   </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.avg_duration_label }}</div>
+    <div class="kpi-label">avg. chat duration</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.avg_turns_per_conversation }}</div>
+    <div class="kpi-label">avg. turns per chat</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ stats.pct_returning }}%</div>
+    <div class="kpi-label">returning visitors{% if stats.total_visitors %} &middot; {{ stats.returning_visitors }}/{{ stats.total_visitors }}{% endif %}</div>
+  </div>
 </div>
 
 <div class="panel-grid">
