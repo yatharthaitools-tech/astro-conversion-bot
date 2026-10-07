@@ -548,6 +548,7 @@ function showInactivityNudge() {
   connectBtn.className = 'nudge-btn nudge-btn-primary';
   connectBtn.textContent = 'Connect me';
   connectBtn.addEventListener('click', () => {
+    trackEvent('nudge_connect_tap', { screen_name: 'chatbot_screen', event_type: 'tap' });
     card.remove();
     sendMessage('Yes, connect me with an astrologer');
   });
@@ -557,6 +558,7 @@ function showInactivityNudge() {
   closeBtn.className = 'nudge-btn';
   closeBtn.textContent = 'Close it out';
   closeBtn.addEventListener('click', () => {
+    trackEvent('nudge_close_tap', { screen_name: 'chatbot_screen', event_type: 'tap' });
     card.remove();
     sendMessage("I'm done, please close this out");
   });
@@ -627,6 +629,7 @@ function showFeedbackPrompt(sessionId) {
   skip.className = 'feedback-skip';
   skip.textContent = 'Skip';
   skip.addEventListener('click', () => {
+    trackEvent('feedback_skip_tap', { screen_name: 'chatbot_screen', event_type: 'tap' });
     card.remove();
     closeChat();
   });
@@ -758,6 +761,7 @@ function renderConnectCard(action) {
       trackEvent('tap_connect_card', {
         screen_name: 'chatbot_screen',
         event_type: 'tap',
+        service_type: mode,
       });
       chatBtn.disabled = true;
       callBtn.disabled = true;
@@ -782,6 +786,7 @@ chatInput.addEventListener('input', () => {
 });
 
 sendButton.addEventListener('click', () => {
+  trackEvent('send_button_tap', { screen_name: 'chatbot_screen', event_type: 'tap' });
   sendMessage();
   // #12: without this, some mobile WebViews drop focus (and dismiss the
   // keyboard) the moment the DOM updates from clearing chatInput.value —
@@ -801,7 +806,10 @@ chatInput.addEventListener('keydown', (event) => {
 // closeChat's PROFILE_DEEPLINK default, same as those other paths.
 // consulation_ended fires from inside closeChat() itself, not here —
 // same event regardless of which path closed the chat.
-if (closeBtn) closeBtn.addEventListener('click', () => closeChat());
+if (closeBtn) closeBtn.addEventListener('click', () => {
+  trackEvent('close_button_tap', { screen_name: 'chatbot_screen', event_type: 'tap' });
+  closeChat();
+});
 
 photoBtn.addEventListener('click', () => {
   trackEvent('upload_image_tap', {});

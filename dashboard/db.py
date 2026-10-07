@@ -996,6 +996,30 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             )
             cards_shown = cur.fetchone()['n']
 
+            # Card tap-through rate — NOT a true conversion rate: tapping
+            # Chat/Call fires a one-way message to the native host
+            # (static/script.js's triggerNativeConnect) with no callback,
+            # so this backend has no visibility into whether a tap
+            # actually led to a started/paid consultation. This is the
+            # honest ceiling on what's measurable here: of the
+            # conversations where the card was shown, what share tapped
+            # it (events.event_type = 'tap_connect_card', joined by
+            # session_id — the same signal admin/templates/analytics.html
+            # surfaces as "card tap-through").
+            cur.execute(
+                f"""WITH shown_sessions AS (
+                        SELECT DISTINCT session_id FROM messages {clause}
+                        AND role = 'bot' AND card_shown = TRUE
+                    )
+                    SELECT
+                        COUNT(DISTINCT ss.session_id) AS shown,
+                        COUNT(DISTINCT ev.session_id) AS tapped
+                    FROM shown_sessions ss
+                    LEFT JOIN events ev
+                        ON ev.session_id = ss.session_id AND ev.event_type = 'tap_connect_card'""", params
+            )
+            tap_through_row = cur.fetchone()
+
             cur.execute(
                 f"SELECT tool_trace FROM messages {clause} AND role = 'bot' AND tool_trace IS NOT NULL", params
             )
@@ -1047,11 +1071,17 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
     pct_returning = (
         round(100 * returning_row['returning'] / returning_row['total'], 1) if returning_row['total'] else 0.0
     )
+    pct_card_tap_through = (
+        round(100 * tap_through_row['tapped'] / tap_through_row['shown'], 1) if tap_through_row['shown'] else 0.0
+    )
 
     return {
         'total_conversations': total_conversations,
         'total_turns': total_turns,
         'cards_shown': cards_shown,
+        'card_shown_sessions': tap_through_row['shown'],
+        'card_tapped_sessions': tap_through_row['tapped'],
+        'pct_card_tap_through': pct_card_tap_through,
         'avg_duration_seconds': duration_row['avg_seconds'],
         'avg_duration_label': _format_duration(duration_row['avg_seconds']),
         'avg_turns_per_conversation': (

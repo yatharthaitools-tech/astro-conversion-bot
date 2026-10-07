@@ -46,6 +46,10 @@
     <div class="kpi-label">open tickets ({{ stats.total_tickets }} total)</div>
   </div>
   <div class="kpi-card">
+    <div class="kpi-value">{{ stats.pct_card_tap_through }}%</div>
+    <div class="kpi-label" title="Of chats where the recommend card was shown, the share that tapped Chat or Call. Not a true conversion rate — there's no signal back from the app on whether a tap led to an actual consultation.">card tap-through{% if stats.card_shown_sessions %} &middot; {{ stats.card_tapped_sessions }}/{{ stats.card_shown_sessions }}{% endif %}</div>
+  </div>
+  <div class="kpi-card">
     <div class="kpi-value">{{ stats.avg_duration_label }}</div>
     <div class="kpi-label">avg. chat duration</div>
   </div>
