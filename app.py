@@ -191,11 +191,19 @@ _ICON_COIN = (
     '<path d="M8 5.2v5.6M6.3 6.6c0-.9.8-1.4 1.7-1.4s1.7.6 1.7 1.3c0 1.8-3.4.9-3.4 2.6 0 '
     '.8.8 1.4 1.7 1.4s1.7-.6 1.7-1.4"/></svg>'
 )
+_ICON_INFO = (
+    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
+    '<circle cx="8" cy="8" r="5.8"/>'
+    '<path d="M8 7.2v3.6" stroke-linecap="round"/><circle cx="8" cy="5.1" r="0.15" fill="currentColor" '
+    'stroke-width="0.9"/></svg>'
+)
 
 quick_replies = [
     {"id": "marriage", "text": "Marriage isn't happening", "icon": _ICON_HEART},
     {"id": "career", "text": "Career feels stuck", "icon": _ICON_BRIEFCASE},
     {"id": "money", "text": "Facing money problems", "icon": _ICON_COIN},
+    {"id": "how_to_use", "text": "How do I use the app?", "icon": _ICON_INFO},
 ]
 
 

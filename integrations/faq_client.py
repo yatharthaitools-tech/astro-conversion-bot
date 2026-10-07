@@ -13,7 +13,10 @@ FAQ_ENTRIES = [
         "answer": "Tap the wallet icon, pick a package, pay — coins land instantly on success.",
     },
     {
-        "keywords": ["how does this work", "what is this app", "how does astrolokal work", "what is astrolokal"],
+        "keywords": [
+            "how does this work", "what is this app", "how does astrolokal work", "what is astrolokal",
+            "how do i use", "how to use the app", "how to use this app", "how does the app work",
+        ],
         "answer": "You chat or call a real astrologer here, paying per minute in coins.",
     },
     {
