@@ -160,7 +160,7 @@
 
 {% block scripts %}
 {% if stats.conversation_trend.weekly or stats.ticket_trend.weekly or stats.ticket_categories or stats.source_breakdown or stats.language_breakdown %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script>
 (function () {
   if (typeof Chart === 'undefined') return;
