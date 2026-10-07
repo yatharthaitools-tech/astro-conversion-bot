@@ -1,11 +1,25 @@
 :root {
+  /* Cosmic/celestial palette — Tara's existing "sun" warmth (kept
+     exactly) now set against deep space instead of cream, since a
+     warm guide against a night sky is literally the astrology brand
+     metaphor, not just a generic dark-mode skin. */
   --sun: #ff9a56;
   --sun-deep: #ff6f3d;
   --sun-dark: #e8532f;
+  --star: #ffd27a;
+  --nebula: #7c5cff;
+  --nebula-soft: #a88cff;
+  --space-deep: #0b0a1a;
+  --space-mid: #15122a;
+  --space-high: #1d1836;
   --cream: #fff7f0;
-  --ink: #2a1c14;
-  --line: rgba(42, 28, 20, 0.08);
-  --shadow: 0 20px 45px rgba(232, 83, 47, 0.22);
+  --ink: #f3eefc;
+  --ink-soft: rgba(243, 238, 252, 0.68);
+  --ink-faint: rgba(243, 238, 252, 0.45);
+  --line: rgba(255, 255, 255, 0.12);
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-strong: rgba(255, 255, 255, 0.1);
+  --shadow: 0 20px 45px rgba(124, 92, 255, 0.22);
   --radius: 20px;
 }
 
@@ -16,7 +30,7 @@ html, body {
   height: 100%;
   font-family: 'Inter', sans-serif;
   color: var(--ink);
-  background: var(--cream);
+  background: radial-gradient(circle at 15% 0%, #241a3d, var(--space-deep) 55%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29,9 +43,10 @@ button, input { font: inherit; }
 .chat-modal {
   width: min(420px, 100vw);
   height: min(680px, var(--app-height, 100vh));
-  background: var(--cream);
+  background: var(--space-deep);
   border-radius: var(--radius);
-  box-shadow: 0 24px 60px rgba(42, 28, 20, 0.18);
+  box-shadow: 0 30px 70px rgba(5, 4, 15, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 50px rgba(124, 92, 255, 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -47,8 +62,10 @@ button, input { font: inherit; }
      env() resolves to 0 anywhere without one (desktop preview, older
      iOS, Android), so this is safe to apply unconditionally. */
   padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px;
-  background: white;
+  background: linear-gradient(180deg, var(--space-high), var(--space-mid));
   border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 1;
 }
 .brand-mark {
   position: relative;
@@ -64,6 +81,10 @@ button, input { font: inherit; }
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
+  /* A soft halo ring instead of a flat border — reads as "radiant
+     guide," matching the cosmic theme without being gaudy. */
+  box-shadow: 0 0 0 2px var(--space-high), 0 0 0 3.5px rgba(255, 154, 86, 0.5),
+    0 0 14px rgba(255, 154, 86, 0.35);
 }
 /* Small "online now" indicator on Tara's avatar — a quick, familiar
    signal that this is a live, responsive assistant, not a static FAQ
@@ -76,7 +97,7 @@ button, input { font: inherit; }
   height: 11px;
   border-radius: 50%;
   background: #34c759;
-  border: 2px solid white;
+  border: 2px solid var(--space-high);
 }
 .brand-status::after {
   content: '';
@@ -102,23 +123,32 @@ button, input { font: inherit; }
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: none;
-  background: rgba(42, 28, 20, 0.06);
+  border: 1px solid var(--line);
+  background: var(--glass);
   color: var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: background 0.15s;
 }
-.close-btn:hover { background: rgba(42, 28, 20, 0.12); }
+.close-btn:hover { background: var(--glass-strong); }
 .title-main {
-  font-weight: 700;
-  font-size: 0.98rem;
+  font-weight: 800;
+  font-size: 1rem;
   line-height: 1.2;
+  letter-spacing: 0.01em;
+  /* A subtle warm shimmer on the wordmark instead of flat text —
+     color is the fallback for a browser without background-clip:text. */
+  color: var(--star);
+  background: linear-gradient(135deg, #fff6e8, var(--star) 55%, var(--sun));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 .title-sub {
   font-size: 0.74rem;
-  color: rgba(42, 28, 20, 0.55);
+  color: var(--ink-faint);
   margin-top: 1px;
 }
 
@@ -129,7 +159,19 @@ button, input { font: inherit; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: linear-gradient(180deg, #fff, #fff3e8);
+  background:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 78% 12%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 32% 42%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 88% 55%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 55% 28%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.5px 1.5px at 20% 75%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(1px 1px at 65% 85%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 92% 90%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(124, 92, 255, 0.16), transparent 70%),
+    linear-gradient(180deg, var(--space-mid), var(--space-deep) 60%);
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 /* Every new message (and the row it may sit in) enters with a soft
    fade + rise rather than just popping in — a small, cheap touch that
@@ -155,29 +197,35 @@ button, input { font: inherit; }
   background: linear-gradient(135deg, var(--sun), var(--sun-dark));
   color: white;
   border-bottom-right-radius: 6px;
-  box-shadow: 0 3px 10px rgba(232, 83, 47, 0.18);
+  box-shadow: 0 4px 16px rgba(255, 111, 61, 0.35);
 }
 .message.bot {
-  background: white;
+  /* Frosted glass over the starfield rather than a flat card — the
+     dark backdrop shows through softly instead of blocking it out. */
+  background: var(--glass-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--line);
   color: var(--ink);
   border-bottom-left-radius: 6px;
-  box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
+  box-shadow: 0 4px 16px rgba(5, 4, 15, 0.25);
 }
 /* A real human agent's reply, synced in from Zoho (#3) — visually
    distinct from Tara's own bubble so it's obvious a person, not the bot,
    is now talking; a small label sits above it instead of an avatar. */
 .message.agent {
-  background: #eef6f2;
-  border: 1px solid rgba(46, 139, 87, 0.25);
+  background: rgba(74, 222, 170, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(74, 222, 170, 0.3);
   color: var(--ink);
   border-bottom-left-radius: 6px;
-  box-shadow: 0 2px 8px rgba(42, 28, 20, 0.05);
+  box-shadow: 0 4px 16px rgba(5, 4, 15, 0.25);
 }
 .agent-label {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #2e8b57;
+  color: #4adeaa;
   margin: 2px 0 4px 2px;
   align-self: flex-start;
 }
@@ -219,7 +267,7 @@ button, input { font: inherit; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(42, 28, 20, 0.35);
+  background: var(--ink-faint);
   animation: typing-bounce 1.2s infinite ease-in-out;
 }
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
@@ -234,7 +282,9 @@ button, input { font: inherit; }
   flex-direction: column;
   gap: 8px;
   padding: 4px 14px 12px;
-  background: #fff3e8;
+  background: var(--space-mid);
+  position: relative;
+  z-index: 1;
 }
 .quick-replies[hidden] { display: none; }
 .quick-reply {
@@ -242,8 +292,10 @@ button, input { font: inherit; }
   align-items: center;
   gap: 8px;
   width: 100%;
-  border: 1px solid rgba(255, 111, 61, 0.3);
-  background: white;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--ink);
   border-radius: 12px;
   padding: 9px 12px;
@@ -255,14 +307,18 @@ button, input { font: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.quick-reply { transition: border-color 0.15s, background 0.15s, transform 0.1s; }
-.quick-reply:hover { border-color: rgba(255, 111, 61, 0.55); background: rgba(255, 111, 61, 0.06); }
+.quick-reply { transition: border-color 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s; }
+.quick-reply:hover {
+  border-color: rgba(255, 154, 86, 0.5);
+  background: rgba(255, 154, 86, 0.1);
+  box-shadow: 0 0 16px rgba(255, 154, 86, 0.18);
+}
 .quick-reply:active { transform: scale(0.98); }
 .quick-reply-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--sun-dark);
+  color: var(--star);
   flex-shrink: 0;
 }
 
@@ -274,15 +330,17 @@ button, input { font: inherit; }
      otherwise. */
   padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--line);
-  background: white;
+  background: linear-gradient(0deg, var(--space-high), var(--space-mid));
+  position: relative;
+  z-index: 1;
 }
 .photo-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--line);
-  background: var(--cream);
-  color: var(--ink);
+  background: var(--glass);
+  color: var(--ink-soft);
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -290,13 +348,13 @@ button, input { font: inherit; }
   flex-shrink: 0;
   transition: background 0.15s, transform 0.1s;
 }
-.photo-btn:hover { background: rgba(255, 111, 61, 0.1); }
+.photo-btn:hover { background: rgba(255, 154, 86, 0.14); color: var(--star); }
 .photo-btn:active { transform: scale(0.94); }
 .photo-btn:disabled { opacity: 0.45; cursor: default; }
 .text-input {
   flex: 1;
   border: 1px solid var(--line);
-  background: var(--cream);
+  background: rgba(0, 0, 0, 0.25);
   border-radius: 999px;
   padding: 11px 16px;
   color: var(--ink);
@@ -309,10 +367,11 @@ button, input { font: inherit; }
   -webkit-user-drag: none;
   touch-action: manipulation;
 }
+.text-input::placeholder { color: var(--ink-faint); }
 .text-input:focus {
   outline: none;
-  border-color: rgba(255, 111, 61, 0.45);
-  box-shadow: 0 0 0 3px rgba(255, 111, 61, 0.15);
+  border-color: rgba(255, 154, 86, 0.55);
+  box-shadow: 0 0 0 3px rgba(255, 154, 86, 0.18);
 }
 .send-btn {
   display: flex;
@@ -326,14 +385,14 @@ button, input { font: inherit; }
   color: white;
   cursor: pointer;
   flex-shrink: 0;
-  box-shadow: 0 3px 10px rgba(232, 83, 47, 0.28);
+  box-shadow: 0 3px 14px rgba(255, 154, 86, 0.4);
   transition: transform 0.12s, box-shadow 0.12s;
 }
-.send-btn:hover { box-shadow: 0 4px 14px rgba(232, 83, 47, 0.38); }
+.send-btn:hover { box-shadow: 0 4px 18px rgba(255, 154, 86, 0.5); }
 .send-btn:active { transform: scale(0.92); }
 .send-btn:disabled {
-  background: var(--line);
-  color: rgba(42, 28, 20, 0.35);
+  background: var(--glass);
+  color: var(--ink-faint);
   box-shadow: none;
   cursor: default;
 }
@@ -341,13 +400,18 @@ button, input { font: inherit; }
 /* --- Inline "connect with a top astrologer" card — the fixed design
    reference image itself (static/avatars/connect-card.jpg), with real
    functional Chat/Call buttons rendered underneath it (an image can't
-   be clickable). */
+   be clickable). Framed as a glowing "portal" floating in the dark
+   chat body — the image itself (warm/cream) stays untouched, the glow
+   around it does the cosmic-theme work instead. */
 .connect-card {
   align-self: stretch;
   padding: 14px;
-  background: white;
-  border: 1px solid rgba(255, 111, 61, 0.18);
-  box-shadow: 0 10px 26px rgba(232, 83, 47, 0.1);
+  background: var(--glass-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 154, 86, 0.35);
+  box-shadow: 0 10px 30px rgba(5, 4, 15, 0.4), 0 0 28px rgba(255, 154, 86, 0.16);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -377,14 +441,15 @@ button, input { font: inherit; }
 }
 .cc-btn:disabled { cursor: default; opacity: 0.7; }
 .cc-btn-chat {
-  background: white;
-  border: 1.5px solid var(--sun-dark);
-  color: var(--sun-dark);
+  background: var(--glass);
+  border: 1.5px solid var(--sun);
+  color: var(--star);
 }
 .cc-btn-call {
   border: none;
   background: linear-gradient(135deg, var(--sun), var(--sun-dark));
   color: white;
+  box-shadow: 0 3px 14px rgba(255, 154, 86, 0.35);
 }
 
 .photo-message img {
@@ -408,13 +473,15 @@ button, input { font: inherit; }
   transition: opacity 0.3s;
 }
 .message.feedback-card {
-  background: linear-gradient(180deg, #fff9f3, white);
-  border: 1px solid rgba(255, 111, 61, 0.18);
-  box-shadow: 0 6px 18px rgba(232, 83, 47, 0.08);
+  background: var(--glass-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 154, 86, 0.3);
+  box-shadow: 0 8px 24px rgba(5, 4, 15, 0.35), 0 0 24px rgba(255, 154, 86, 0.12);
 }
 .message.feedback-card.feedback-done {
-  border-color: rgba(46, 139, 87, 0.25);
-  box-shadow: 0 6px 18px rgba(46, 139, 87, 0.1);
+  border-color: rgba(74, 222, 170, 0.35);
+  box-shadow: 0 8px 24px rgba(5, 4, 15, 0.35), 0 0 24px rgba(74, 222, 170, 0.14);
 }
 .feedback-label {
   font-size: 0.95rem;
@@ -431,13 +498,13 @@ button, input { font: inherit; }
   background: none;
   font-size: 2rem;
   line-height: 1;
-  color: rgba(42, 28, 20, 0.2);
+  color: var(--ink-faint);
   cursor: pointer;
   padding: 2px;
   transition: color 0.15s, transform 0.15s;
 }
 .feedback-star.filled {
-  color: var(--sun-dark);
+  color: var(--star);
   transform: scale(1.1);
 }
 .feedback-star:disabled {
@@ -446,7 +513,7 @@ button, input { font: inherit; }
 .feedback-skip {
   border: none;
   background: none;
-  color: rgba(42, 28, 20, 0.45);
+  color: var(--ink-faint);
   font-size: 0.82rem;
   text-decoration: underline;
   cursor: pointer;
@@ -465,9 +532,11 @@ button, input { font: inherit; }
   padding: 16px;
 }
 .message.nudge-card {
-  background: linear-gradient(180deg, #fff9f3, white);
-  border: 1px solid rgba(255, 111, 61, 0.18);
-  box-shadow: 0 6px 18px rgba(232, 83, 47, 0.08);
+  background: var(--glass-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 154, 86, 0.3);
+  box-shadow: 0 8px 24px rgba(5, 4, 15, 0.35), 0 0 24px rgba(255, 154, 86, 0.12);
 }
 .nudge-label {
   font-size: 0.9rem;
@@ -484,14 +553,14 @@ button, input { font: inherit; }
   padding: 9px 10px;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: white;
+  background: var(--glass);
   color: var(--ink);
   font: inherit;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
 }
-.nudge-btn:not(.nudge-btn-primary):hover { background: var(--cream); }
+.nudge-btn:not(.nudge-btn-primary):hover { background: var(--glass-strong); }
 .nudge-btn-primary {
   border: none;
   background: linear-gradient(135deg, var(--sun), var(--sun-dark));
@@ -512,13 +581,16 @@ button, input { font: inherit; }
   padding: 14px 16px;
 }
 .message.coins-card {
-  background: linear-gradient(135deg, #fff3e0, #ffe8d1);
-  border: 1px solid rgba(255, 154, 86, 0.3);
+  background: linear-gradient(135deg, rgba(255, 210, 122, 0.16), rgba(255, 154, 86, 0.1));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 210, 122, 0.4);
+  box-shadow: 0 8px 24px rgba(5, 4, 15, 0.35), 0 0 24px rgba(255, 210, 122, 0.16);
 }
 .coins-card-label {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--ink);
+  color: var(--star);
 }
 
 @media (max-width: 480px) {
@@ -564,9 +636,11 @@ button, input { font: inherit; }
   justify-content: center;
   gap: 6px;
   padding: 8px 14px;
-  background: #fff3e6;
-  border-bottom: 1px solid rgba(232, 83, 47, 0.18);
-  color: var(--sun-dark);
+  background: rgba(255, 154, 86, 0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 154, 86, 0.3);
+  color: var(--star);
   font-size: 0.8rem;
   font-weight: 600;
   text-align: center;
@@ -578,8 +652,8 @@ button, input { font: inherit; }
   margin: 12px auto;
   padding: 4px 12px;
   font-size: 12px;
-  color: #8a7f78;
-  background: rgba(0, 0, 0, 0.04);
+  color: var(--ink-faint);
+  background: var(--glass);
   border-radius: 999px;
   text-align: center;
 }

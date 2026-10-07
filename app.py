@@ -171,25 +171,16 @@ def is_prediction_intent(question, lang):
 # concern — kept here rather than in the template since they travel with
 # the same 3 entries the backend already curates. `| safe` in the template
 # is fine: this is our own fixed markup, never user input.
-_ICON_HEART = (
+_ICON_CLOCK_HEART = (
     '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
     'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
-    '<path d="M8 13.3S2.6 10.1 2.6 6.3C2.6 4.3 4.1 3 5.8 3c.9 0 1.7.4 2.2 1.1C8.5 3.4 9.3 3 '
-    '10.2 3c1.7 0 3.2 1.3 3.2 3.3 0 3.8-5.4 7-5.4 7z"/></svg>'
+    '<circle cx="8" cy="8" r="5.8"/><path d="M8 4.6V8l2.3 1.3"/></svg>'
 )
-_ICON_BRIEFCASE = (
+_ICON_RINGS = (
     '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
     'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
-    '<rect x="2" y="5.3" width="12" height="8" rx="1.2"/>'
-    '<path d="M6 5.3V4a1.2 1.2 0 0 1 1.2-1.2h1.6A1.2 1.2 0 0 1 10 4v1.3"/>'
-    '<path d="M2 9h12"/></svg>'
-)
-_ICON_COIN = (
-    '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
-    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">'
-    '<circle cx="8" cy="8" r="5.8"/>'
-    '<path d="M8 5.2v5.6M6.3 6.6c0-.9.8-1.4 1.7-1.4s1.7.6 1.7 1.3c0 1.8-3.4.9-3.4 2.6 0 '
-    '.8.8 1.4 1.7 1.4s1.7-.6 1.7-1.4"/></svg>'
+    '<circle cx="5.6" cy="9.4" r="3"/><circle cx="10.4" cy="9.4" r="3"/>'
+    '<path d="M6.4 3.2l1.6 2.6 1.6-2.6"/></svg>'
 )
 _ICON_INFO = (
     '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" '
@@ -200,9 +191,8 @@ _ICON_INFO = (
 )
 
 quick_replies = [
-    {"id": "marriage", "text": "Marriage isn't happening", "icon": _ICON_HEART},
-    {"id": "career", "text": "Career feels stuck", "icon": _ICON_BRIEFCASE},
-    {"id": "money", "text": "Facing money problems", "icon": _ICON_COIN},
+    {"id": "ex_back", "text": "When will my ex come back?", "icon": _ICON_CLOCK_HEART},
+    {"id": "marriage_timing", "text": "When will I get married?", "icon": _ICON_RINGS},
     {"id": "how_to_use", "text": "How do I use the app?", "icon": _ICON_INFO},
 ]
 
