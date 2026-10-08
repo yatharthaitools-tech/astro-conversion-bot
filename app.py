@@ -89,7 +89,13 @@ PRD_INTENTS = {
         }
     },
     'marriage': {
-        'keywords': ['marriage', 'wedding', 'husband', 'wife', 'marriage prospects', 'shaadi'],
+        # 'married'/'get married' added — 'married' isn't a substring of
+        # 'marriage', so "when am i getting married" (a literal
+        # PREDICTION_KEYWORDS phrase, hits is_prediction_intent fine) was
+        # silently missing this bucket entirely, falling through to
+        # concern_for_intent's 'general' default and losing the specific
+        # concern the deflection's own connect-card and text both need.
+        'keywords': ['marriage', 'wedding', 'husband', 'wife', 'marriage prospects', 'shaadi', 'married', 'get married'],
         'answers': {
             'en': 'I can help with marriage-related guidance. I can suggest the right consultation based on your concern and preferred service.',
             'hi': 'मैं शादी से जुड़े मार्गदर्शन में मदद कर सकता हूँ। आपकी चिंता और पसंद के अनुसार सही परामर्श सुझा सकता हूँ।'
@@ -166,6 +172,9 @@ PREDICTION_KEYWORDS = {
     'ml': ['ഭാവി', 'ജാതകം', 'രാശിഫലം', 'എപ്പോൾ വിവാഹം'],
 }
 
+# Generic fallback — only used for 'general' (no specific concern bucket
+# matched, see _CONCERN_BY_INTENT below), since "best people who've helped
+# others with their general" isn't a real phrase.
 CONNECT_MESSAGES = {
     'en': "I know a few people who can help with this. Want me to connect you?",
     'hi': "इसमें मदद कर सकने वाले कुछ लोगों को मैं जानती हूँ। जोड़ दूँ?",
@@ -173,6 +182,40 @@ CONNECT_MESSAGES = {
     'te': "దీనికి సహాయపడగల కొందరు నాకు తెలుసు. కనెక్ట్ చేయమంటారా?",
     'ml': "ഇതിന് സഹായിക്കാൻ കഴിയുന്ന ചിലരെ എനിക്കറിയാം. ബന്ധിപ്പിക്കട്ടെയോ?",
 }
+
+# Whenever a specific concern bucket IS known (career/love/finance/
+# marriage), name it explicitly instead of the generic "this" above —
+# "the best people who've helped others with their X" reads as a real
+# recommendation, not a vague offer.
+CONNECT_MESSAGE_WITH_CONCERN = {
+    'en': "I know the best people who've helped others with their {concern}. Want me to connect you?",
+    'hi': "{concern} में औरों की मदद कर चुके सबसे अच्छे लोगों को मैं जानती हूँ। जोड़ दूँ?",
+    'ta': "{concern} விஷயத்தில் மற்றவர்களுக்கு உதவிய சிறந்தவர்களை எனக்குத் தெரியும். இணைக்கட்டுமா?",
+    'te': "{concern} విషయంలో ఇతరులకు సహాయపడిన అత్యుత్తమ వ్యక్తులు నాకు తెలుసు. కనెక్ట్ చేయమంటారా?",
+    'ml': "{concern} കാര്യത്തിൽ മറ്റുള്ളവരെ സഹായിച്ച മികച്ചവരെ എനിക്കറിയാം. ബന്ധിപ്പിക്കട്ടെയോ?",
+}
+
+# The concern noun itself, per language — plugged into
+# CONNECT_MESSAGE_WITH_CONCERN's {concern} placeholder above.
+CONCERN_NOUNS = {
+    'en': {'career': 'career', 'love': 'love life', 'finance': 'finances', 'marriage': 'marriage'},
+    'hi': {'career': 'करियर', 'love': 'प्यार', 'finance': 'पैसों', 'marriage': 'शादी'},
+    'ta': {'career': 'தொழில்', 'love': 'காதல்', 'finance': 'பணம்', 'marriage': 'திருமணம்'},
+    'te': {'career': 'కెరీర్', 'love': 'ప్రేమ', 'finance': 'డబ్బు', 'marriage': 'పెళ్లి'},
+    'ml': {'career': 'കരിയർ', 'love': 'പ്രണയം', 'finance': 'പണം', 'marriage': 'വിവാഹം'},
+}
+
+
+def connect_message(lang: str, concern: str) -> str:
+    """The code-level (non-model) connect offer text — only used by the
+    two hardcoded trigger() call sites below (prediction deflect + the
+    general-concern safety net), same ones that already compute `concern`
+    for the card itself but never threaded it into this text until now."""
+    noun = CONCERN_NOUNS.get(lang, CONCERN_NOUNS['en']).get(concern)
+    if not noun:
+        return CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
+    template = CONNECT_MESSAGE_WITH_CONCERN.get(lang, CONNECT_MESSAGE_WITH_CONCERN['en'])
+    return template.format(concern=noun)
 
 
 def is_prediction_intent(question, lang):
@@ -476,8 +519,9 @@ def ask():
         # agent's own trigger_recommend_astrologer call for this case
         # isn't reliable enough on prompt instruction alone (see
         # PREDICTION_KEYWORDS' comment above).
-        ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(map_intent(question)))
-        answer = CONNECT_MESSAGES.get(lang, CONNECT_MESSAGES['en'])
+        concern = concern_for_intent(map_intent(question))
+        ctx.ui_action = recommend_flow_client.trigger(lang, None, concern)
+        answer = connect_message(lang, concern)
         source = 'prediction_deflect'
     else:
         answer = agent_orchestrator.run_chat_turn(
