@@ -120,7 +120,7 @@ def _headers() -> dict:
 
 
 def create_ticket(user_id: str, category: str, sub_category: str, description: str,
-                   evidence_url: str = None, ltv_tier: str = None,
+                   evidence_url: str = None, ltv_tier: str = None, ltv_amount: float = None,
                    conversation_transcript: str = None) -> dict:
     ticket_ref = f"AST-{uuid.uuid4().hex[:6].upper()}"
     zoho_id = None
@@ -129,16 +129,25 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
         ticket = {
             "ticket_id": ticket_ref, "category": category, "sub_category": sub_category,
             "description": description, "evidence_url": evidence_url, "ltv_tier": ltv_tier,
-            "status": "Open", "zoho_ticket_id": None,
+            "ltv_amount": ltv_amount, "status": "Open", "zoho_ticket_id": None,
         }
         _MOCK_TICKETS_BY_USER.setdefault(user_id, []).append(ticket)
         logger.info("[MOCK zoho_client] created ticket %s for user=%s category=%s", ticket_ref, user_id, category)
         return ticket
 
+    # No cf_ltv_tier/cf_ltv_amount custom field exists on the real layout
+    # (see module docstring), so the exact ₹ figure — not just the tier
+    # bucket — goes into the subject (for a glance at the ticket list)
+    # and as its own line in the description (for anyone actually reading
+    # the ticket). ltv_amount is the real lifetime-spend figure from the
+    # link that opened the chat (agent/context.py's SessionContext.ltv),
+    # not a mocked value.
+    ltv_label = f"₹{ltv_amount:,.2f}" if ltv_amount is not None else "unranked"
+
     try:
         payload = {
-            "subject": f"[{ticket_ref}] {category} / {sub_category} ({ltv_tier or 'unranked'})",
-            "description": description,
+            "subject": f"[{ticket_ref}] {category} / {sub_category} ({ltv_tier or 'unranked'}, {ltv_label})",
+            "description": f"Visitor LTV: {ltv_label} (tier: {ltv_tier or 'unranked'})\n\n{description}",
             "departmentId": ZOHO_DEPARTMENT_ID,
             "status": "Open",
             "category": _ZOHO_CATEGORY_MAP.get(category, _DEFAULT_ZOHO_CATEGORY),
@@ -160,7 +169,7 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
             },
         }
         if evidence_url:
-            payload["description"] = f"{description}\n\nEvidence: {evidence_url}"
+            payload["description"] = f"{payload['description']}\n\nEvidence: {evidence_url}"
         if conversation_transcript:
             # #2: agent has context of the issue without a second tool —
             # the actual bot conversation, not just the one-line summary
@@ -183,7 +192,7 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
     return {
         "ticket_id": ticket_ref, "category": category, "sub_category": sub_category,
         "description": description, "evidence_url": evidence_url, "ltv_tier": ltv_tier,
-        "status": "Open", "zoho_ticket_id": zoho_id,
+        "ltv_amount": ltv_amount, "status": "Open", "zoho_ticket_id": zoho_id,
     }
 
 

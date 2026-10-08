@@ -41,7 +41,7 @@ def _handle_check_refund_eligibility(safe_input, ctx):
 
 
 def _handle_get_ltv_tier(safe_input, ctx):
-    return {"tier": ltv_service.get_tier(ctx.user_id)}
+    return {"tier": ltv_service.get_tier(ctx.user_id, ctx.ltv)}
 
 
 def _handle_credit_coins(safe_input, ctx):
@@ -148,7 +148,7 @@ def _handle_create_support_ticket(safe_input, ctx):
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
     ticket = ticket_service.create_ticket(
         ctx.user_id, category, sub_category, description, evidence_url,
-        session_id=ctx.session_id, language=ctx.language,
+        session_id=ctx.session_id, language=ctx.language, ltv=ctx.ltv,
     )
     ctx.ticket_raised = True
     return {"ok": True, "ticket_id": ticket["ticket_id"], "status": ticket["status"]}

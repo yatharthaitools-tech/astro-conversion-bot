@@ -54,12 +54,13 @@ def _build_transcript(session_id: str) -> str:
 
 
 def create_ticket(user_id: str, category: str, sub_category: str, description: str,
-                   evidence_url: str = None, session_id: str = None, language: str = None) -> dict:
-    tier = ltv_service.get_tier(user_id)
+                   evidence_url: str = None, session_id: str = None, language: str = None,
+                   ltv: float = None) -> dict:
+    tier = ltv_service.get_tier(user_id, ltv)
     transcript = _build_transcript(session_id)
     ticket = zoho_client.create_ticket(
         user_id, category, sub_category, description, evidence_url,
-        ltv_tier=tier, conversation_transcript=transcript,
+        ltv_tier=tier, ltv_amount=ltv, conversation_transcript=transcript,
     )
     dashboard_db.record_ticket(
         ticket['ticket_id'], session_id, user_id, category, sub_category,
