@@ -5,3 +5,4 @@ google-auth==2.35.0
 python-dotenv==1.0.1
 PyYAML==6.0.2
 psycopg2-binary==2.9.9
+cryptography==41.0.7

@@ -18,7 +18,7 @@ load_dotenv()
 
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
-from integrations import photo_storage, recommend_flow_client, s3_client
+from integrations import link_token, photo_storage, recommend_flow_client, s3_client
 from dashboard import auth as dashboard_auth
 from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
@@ -283,18 +283,38 @@ def home():
     # production: the native app's own WebView uses ?user_id=...&
     # oauth_token=...&user_name=...&ltv=..., while the "Chat with us"
     # support/CRM link uses ?user_id=...&name=...&ltv=... with no
-    # oauth_token at all. `name` wins when both happen to be present —
-    # see agent/context.py's resolve_session for how these get trusted
-    # (or not) once they reach /ask. Embedded into the page below so
-    # script.js can carry them on every request without re-reading
-    # location.search each time.
+    # oauth_token at all. `name` wins when both happen to be present.
+    #
+    # A `token` param (integrations/link_token.py) takes over from BOTH
+    # of those when present — an encrypted blob carrying user_id/name/
+    # ltv instead of plaintext query params, so those values never sit
+    # readable in a URL (browser history, server access logs, a
+    # forwarded link). A present-but-broken token (expired/tampered/
+    # wrong key) deliberately does NOT fall back to reading legacy
+    # plaintext params in the same request — that fallback would let
+    # `?token=garbage&user_id=...&name=...` bypass encryption entirely.
+    # See agent/context.py's resolve_session for how user_id/name/ltv
+    # get trusted (or not) once they reach /ask. Embedded into the page
+    # below so script.js can carry them on every request without
+    # re-reading location.search each time.
+    token_param = request.args.get('token')
+    if token_param:
+        identity = link_token.decrypt_identity(token_param) or {'user_id': '', 'name': '', 'ltv': ''}
+        user_id = identity['user_id']
+        user_name = identity['name']
+        ltv = identity['ltv']
+    else:
+        user_id = request.args.get('user_id', '')
+        user_name = request.args.get('name') or request.args.get('user_name', '')
+        ltv = request.args.get('ltv', '')
+
     return render_template(
         'index.html',
         quick_replies=quick_replies,
-        user_id=request.args.get('user_id', ''),
+        user_id=user_id,
         oauth_token=request.args.get('oauth_token', ''),
-        user_name=request.args.get('name') or request.args.get('user_name', ''),
-        ltv=request.args.get('ltv', ''),
+        user_name=user_name,
+        ltv=ltv,
     )
 
 
@@ -448,7 +468,7 @@ def ask():
     image_unavailable = bool(_ATTACHMENT_MARKER_RE.search(question)) and not image_data
     if image_unavailable:
         app.logger.warning('Photo marker in question but image could not be loaded: %r', question[:200])
-    dashboard_db.ensure_conversation(session_id, ctx.user_id)
+    dashboard_db.ensure_conversation(session_id, ctx.user_id, ltv=ctx.ltv)
 
     if is_prediction_intent(question, lang):
         # Never let a prediction/fortune question reach the model at all —
@@ -495,7 +515,7 @@ def ask():
     })
     dashboard_db.record_turn(
         session_id, ctx.user_id, question, answer, lang, source, ctx.trace,
-        card_shown=bool(ctx.ui_action),
+        card_shown=bool(ctx.ui_action), ltv=ctx.ltv,
     )
 
     return jsonify({

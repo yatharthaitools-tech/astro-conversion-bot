@@ -208,6 +208,12 @@ _MIGRATIONS = [
     # equivalent for constraints). 'system' = session-closed markers.
     "ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_role_check",
     "ALTER TABLE messages ADD CONSTRAINT messages_role_check CHECK (role IN ('user', 'bot', 'agent', 'system'))",
+    # The visitor's real lifetime-spend figure (agent/context.py's
+    # resolve_session — e.g. the "Chat with us" support link's own
+    # ltv=13924.00) — captured per conversation so the Analytics page
+    # can break down engagement/resolution by real LTV, not just use it
+    # for in-conversation business logic.
+    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS ltv NUMERIC",
 ]
 
 # Hindi/Tamil/Telugu/Malayalam — the languages #4 asked for ticket routing
@@ -249,29 +255,32 @@ def _to_dict(row) -> dict:
     return {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(row).items()}
 
 
-def ensure_conversation(session_id: str, user_id: str) -> None:
+def ensure_conversation(session_id: str, user_id: str, ltv: float = None) -> None:
     """Guarantees a conversations row exists for this session before the
     agent's tool loop runs. record_turn() (which does the real turn_count/
     last_seen_at upsert) only runs after that loop finishes, but a tool
     called mid-loop — create_support_ticket — inserts into tickets with a
     FK reference to conversations.session_id. Without this, a ticket
-    raised on a session's very first turn would fail that FK check."""
+    raised on a session's very first turn would fail that FK check.
+    COALESCE on conflict means a real ltv value is never clobbered back
+    to NULL by a later call that didn't have one."""
     now = _now()
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO conversations (session_id, user_id, first_seen_at, last_seen_at, turn_count)
-                       VALUES (%s, %s, %s, %s, 0)
-                       ON CONFLICT (session_id) DO NOTHING""",
-                    (session_id, user_id, now, now),
+                    """INSERT INTO conversations (session_id, user_id, first_seen_at, last_seen_at, turn_count, ltv)
+                       VALUES (%s, %s, %s, %s, 0, %s)
+                       ON CONFLICT (session_id) DO UPDATE SET
+                           ltv = COALESCE(EXCLUDED.ltv, conversations.ltv)""",
+                    (session_id, user_id, now, now, ltv),
                 )
     except psycopg2.Error:
         logger.warning("ensure_conversation failed for session %s", session_id, exc_info=True)
 
 
 def record_turn(session_id: str, user_id: str, question: str, answer: str,
-                language: str, source: str, tool_trace: list, card_shown: bool) -> None:
+                language: str, source: str, tool_trace: list, card_shown: bool, ltv: float = None) -> None:
     """Called once per /ask turn — writes the user's question and the
     bot's answer as two message rows, and upserts the conversation's
     summary row. Also detects a resolution outcome (mark_issue_resolved
@@ -292,13 +301,14 @@ def record_turn(session_id: str, user_id: str, question: str, answer: str,
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO conversations (session_id, user_id, first_seen_at, last_seen_at, turn_count, last_language)
-                       VALUES (%s, %s, %s, %s, 1, %s)
+                    """INSERT INTO conversations (session_id, user_id, first_seen_at, last_seen_at, turn_count, last_language, ltv)
+                       VALUES (%s, %s, %s, %s, 1, %s, %s)
                        ON CONFLICT (session_id) DO UPDATE SET
                            last_seen_at = EXCLUDED.last_seen_at,
                            turn_count = conversations.turn_count + 1,
-                           last_language = EXCLUDED.last_language""",
-                    (session_id, user_id, now, now, language),
+                           last_language = EXCLUDED.last_language,
+                           ltv = COALESCE(EXCLUDED.ltv, conversations.ltv)""",
+                    (session_id, user_id, now, now, language, ltv),
                 )
                 if resolved_by:
                     cur.execute(
@@ -1020,6 +1030,56 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             )
             tap_through_row = cur.fetchone()
 
+            # LTV-wise analysis — the visitor's real ₹ lifetime spend is
+            # known from session start (agent/context.py's resolve_session,
+            # persisted on conversations.ltv by ensure_conversation/
+            # record_turn) for any conversation reached via a real link
+            # (native app or the "Chat with us" support/CRM link). Bucketed
+            # into the same tier vocabulary get_ltv_tier's mocked lookup
+            # already uses (New/Unpaid, New-Low, Mid, High), but computed
+            # from this REAL figure — 'Unknown' is a conversation with no
+            # ltv at all (opened outside either real link format, e.g.
+            # local/dev testing).
+            cur.execute(
+                f"""SELECT
+                        CASE
+                            WHEN c.ltv IS NULL THEN 'Unknown'
+                            WHEN c.ltv <= 0 THEN 'New/Unpaid'
+                            WHEN c.ltv < 200 THEN 'New-Low'
+                            WHEN c.ltv < 1000 THEN 'Mid'
+                            ELSE 'High'
+                        END AS tier,
+                        -- A bare output alias (tier) is usable in ORDER
+                        -- BY directly, but NOT inside a further
+                        -- expression like CASE tier WHEN ... — Postgres
+                        -- only resolves aliases for a plain ORDER BY
+                        -- <alias>, not as a sub-expression's operand. A
+                        -- second numeric rank column, grouped alongside
+                        -- tier (deterministic 1:1 with it, so grouping
+                        -- by both doesn't fragment anything), sidesteps
+                        -- that entirely.
+                        CASE
+                            WHEN c.ltv IS NULL THEN 5
+                            WHEN c.ltv <= 0 THEN 4
+                            WHEN c.ltv < 200 THEN 3
+                            WHEN c.ltv < 1000 THEN 2
+                            ELSE 1
+                        END AS tier_rank,
+                        COUNT(*) AS conversations,
+                        COUNT(*) FILTER (WHERE c.resolved_by = 'bot') AS resolved_by_bot,
+                        COUNT(*) FILTER (WHERE c.resolved_by = 'escalated') AS escalated,
+                        AVG(c.rating) AS avg_rating,
+                        COUNT(*) FILTER (WHERE EXISTS (
+                            SELECT 1 FROM events e
+                            WHERE e.session_id = c.session_id AND e.event_type = 'tap_connect_card'
+                        )) AS tapped_card
+                    FROM conversations c
+                    WHERE c.session_id IN (SELECT DISTINCT session_id FROM messages {clause})
+                    GROUP BY tier, tier_rank
+                    ORDER BY tier_rank""", params
+            )
+            ltv_rows = cur.fetchall()
+
             cur.execute(
                 f"SELECT tool_trace FROM messages {clause} AND role = 'bot' AND tool_trace IS NOT NULL", params
             )
@@ -1082,6 +1142,20 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
         'card_shown_sessions': tap_through_row['shown'],
         'card_tapped_sessions': tap_through_row['tapped'],
         'pct_card_tap_through': pct_card_tap_through,
+        'ltv_breakdown': [
+            {
+                'tier': r['tier'],
+                'conversations': r['conversations'],
+                'resolved_by_bot': r['resolved_by_bot'],
+                'escalated': r['escalated'],
+                'avg_rating': round(r['avg_rating'], 2) if r['avg_rating'] is not None else None,
+                'tapped_card': r['tapped_card'],
+                'pct_tap_through': (
+                    round(100 * r['tapped_card'] / r['conversations'], 1) if r['conversations'] else 0.0
+                ),
+            }
+            for r in ltv_rows
+        ],
         'avg_duration_seconds': duration_row['avg_seconds'],
         'avg_duration_label': _format_duration(duration_row['avg_seconds']),
         'avg_turns_per_conversation': (

@@ -153,6 +153,38 @@
     {% endif %}
   </div>
 
+  <div class="panel">
+    <h2>Conversations by LTV tier</h2>
+    <p class="ticket-subline">The visitor's real lifetime-spend figure, known from session start — "Unknown" is a conversation opened outside a real app/support link (e.g. local testing).</p>
+    {% if stats.ltv_breakdown %}
+      <div class="chart-wrap chart-wrap-donut"><canvas id="ltvChart"></canvas></div>
+    {% else %}
+      <p class="empty-state">No data yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>LTV-wise analysis</h2>
+    <p class="ticket-subline">Does engagement/resolution actually differ by how much a visitor has spent? "Card tap-through" is the same honest metric as the KPI above — not a true conversion rate.</p>
+    <table class="admin-table">
+      <thead><tr><th>Tier</th><th>Conversations</th><th>Resolved by bot</th><th>Escalated</th><th>Avg. CSAT</th><th>Card tap-through</th></tr></thead>
+      <tbody>
+        {% for row in stats.ltv_breakdown %}
+        <tr>
+          <td><span class="role-pill">{{ row.tier }}</span></td>
+          <td>{{ row.conversations }}</td>
+          <td>{{ row.resolved_by_bot }}</td>
+          <td>{{ row.escalated }}</td>
+          <td>{{ row.avg_rating if row.avg_rating is not none else '—' }}</td>
+          <td>{{ row.pct_tap_through }}%{% if row.conversations %} &middot; {{ row.tapped_card }}/{{ row.conversations }}{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
   <div class="panel panel-wide">
     <h2>Tool calls</h2>
     <table class="admin-table">
@@ -272,6 +304,11 @@
 
   donutChart('sourceChart', {{ stats.source_breakdown | tojson }}, 'source');
   donutChart('languageChart', {{ stats.language_breakdown | tojson }}, 'language');
+  donutChart(
+    'ltvChart',
+    {{ stats.ltv_breakdown | tojson }}.map(function (r) { return { tier: r.tier, count: r.conversations }; }),
+    'tier'
+  );
 })();
 </script>
 {% endif %}
