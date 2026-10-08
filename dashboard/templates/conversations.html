@@ -35,7 +35,7 @@
       {% for c in conversations %}
       <tr onclick="window.location='{{ url_for('dashboard.conversation_detail', session_id=c.session_id) }}'">
         <td class="mono">{{ c.session_id[:12] }}…</td>
-        <td class="mono">{{ c.user_id[:14] }}…</td>
+        <td class="mono">{{ c.user_id[:14] }}{{ '…' if c.user_id and c.user_id|length > 14 else '' }}</td>
         <td>{{ c.first_seen_at[:16].replace('T', ' ') }}</td>
         <td>{{ c.last_seen_at[:16].replace('T', ' ') }}</td>
         <td>{{ c.turn_count }}</td>

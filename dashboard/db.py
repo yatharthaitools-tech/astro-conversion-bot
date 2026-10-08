@@ -712,9 +712,12 @@ def get_latest_resolved_ticket(user_id: str) -> dict:
 
 # --- Agent messages (Zoho -> visitor chat sync, #3) -----------------------
 
-def record_agent_message(session_id: str, text: str, author_name: str = None) -> None:
-    """A real Zoho agent's reply, synced in via the webhook — same
-    `messages` row shape as a bot turn, role='agent' so the visitor's
+def record_agent_message(session_id: str, text: str, author_name: str = None, source: str = 'zoho_agent') -> None:
+    """A real support agent's reply — either synced in from Zoho Desk via
+    the webhook (source='zoho_agent', the original caller), or typed
+    directly into this dashboard's own ticket detail page
+    (source='dashboard_agent', services/ticket_service.send_agent_reply) —
+    same `messages` row shape as a bot turn, role='agent' so the visitor's
     chat (polling /conversations/<session_id>/agent-messages) and the
     admin transcript view can both tell it apart from the bot's own
     replies. author_name is folded into the text itself (e.g. 'Priya: ...')
@@ -727,8 +730,8 @@ def record_agent_message(session_id: str, text: str, author_name: str = None) ->
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO messages (session_id, role, text, source, card_shown, created_at)
-                       VALUES (%s, 'agent', %s, 'zoho_agent', FALSE, %s)""",
-                    (session_id, display_text, now),
+                       VALUES (%s, 'agent', %s, %s, FALSE, %s)""",
+                    (session_id, display_text, source, now),
                 )
     except psycopg2.Error:
         logger.warning("record_agent_message failed for session %s", session_id, exc_info=True)

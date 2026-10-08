@@ -77,7 +77,7 @@
           <td onclick="event.stopPropagation()"><input type="checkbox" class="ticket-check" name="ticket_ids" value="{{ t.id }}" /></td>
           {% endif %}
           <td class="mono" onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.ticket_ref }}</td>
-          <td class="mono" onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.user_id[:14] }}…</td>
+          <td class="mono" onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.user_id[:14] }}{{ '…' if t.user_id and t.user_id|length > 14 else '' }}</td>
           <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.category }}<div class="table-subtext">{{ t.sub_category or '' }}</div></td>
           <td class="truncate" onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.description }}</td>
           <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'"><span class="status-pill status-{{ t.status|lower|replace(' ', '-') }}">{{ t.status }}</span></td>

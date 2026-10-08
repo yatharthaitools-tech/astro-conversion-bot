@@ -365,7 +365,7 @@ span.delta-up, span.delta-down, span.delta-flat { background: none; padding: 0; 
 .history-time { color: var(--ink-faint); margin-left: auto; font-size: 0.75rem; }
 .side-field { font-size: 0.85rem; margin-bottom: 12px; }
 .side-field .label { display: block; color: var(--ink-faint); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px; }
-.ticket-side form select, .ticket-side form textarea {
+.ticket-layout form select, .ticket-layout form textarea {
   width: 100%;
   padding: 9px 11px;
   border: 1px solid var(--line-strong);

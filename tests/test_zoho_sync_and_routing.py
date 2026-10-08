@@ -259,6 +259,59 @@ def test_agent_messages_polling_respects_since():
     assert "second message" in messages[0]["text"]
 
 
+# --- Support-agent reply direct from this dashboard (no Zoho needed) ------
+
+def test_send_agent_reply_reaches_visitor_chat():
+    dashboard_db.ensure_conversation("sess-reply", "u_reply")
+    dashboard_db.record_ticket("AST-REPLY", "sess-reply", "u_reply", "technical", "x", "d", None, "mid")
+    ticket = dashboard_db.list_tickets(limit=1)[0]
+
+    ok = ticket_service.send_agent_reply(ticket["id"], "We've fixed your account issue.", "Priya")
+    assert ok is True
+
+    messages = dashboard_db.get_new_agent_messages("sess-reply", None)
+    assert len(messages) == 1
+    assert "Priya" in messages[0]["text"]
+    assert "fixed your account issue" in messages[0]["text"]
+
+
+def test_send_agent_reply_ignores_blank_text():
+    dashboard_db.ensure_conversation("sess-reply2", "u_reply2")
+    dashboard_db.record_ticket("AST-REPLY2", "sess-reply2", "u_reply2", "technical", "x", "d", None, "mid")
+    ticket = dashboard_db.list_tickets(limit=1)[0]
+
+    assert ticket_service.send_agent_reply(ticket["id"], "   ", "Priya") is False
+    assert dashboard_db.get_new_agent_messages("sess-reply2", None) == []
+
+
+def test_ticket_detail_route_sends_reply(client):
+    _make_user("agent@x.com", "support_agent")
+    dashboard_db.ensure_conversation("sess-reply3", "u_reply3")
+    dashboard_db.record_ticket("AST-REPLY3", "sess-reply3", "u_reply3", "technical", "x", "d", None, "mid")
+    ticket = dashboard_db.list_tickets(limit=1)[0]
+
+    client.post("/admin/login", data={"email": "agent@x.com", "password": "pass12345"})
+    resp = client.post(f"/admin/tickets/{ticket['id']}", data={"reply": "Checking this now."})
+    assert resp.status_code == 302
+
+    messages = dashboard_db.get_new_agent_messages("sess-reply3", None)
+    assert len(messages) == 1
+    assert "agent@x.com" in messages[0]["text"]
+    assert "Checking this now." in messages[0]["text"]
+
+
+def test_ticket_detail_reply_route_is_agent_or_admin_only(client):
+    dashboard_db.create_admin_user("analyst@x.com", generate_password_hash("pass12345"), "analyst")
+    dashboard_db.ensure_conversation("sess-reply4", "u_reply4")
+    dashboard_db.record_ticket("AST-REPLY4", "sess-reply4", "u_reply4", "technical", "x", "d", None, "mid")
+    ticket = dashboard_db.list_tickets(limit=1)[0]
+
+    client.post("/admin/login", data={"email": "analyst@x.com", "password": "pass12345"})
+    resp = client.post(f"/admin/tickets/{ticket['id']}", data={"reply": "Should not be allowed."})
+    assert resp.status_code == 403
+    assert dashboard_db.get_new_agent_messages("sess-reply4", None) == []
+
+
 # --- #6/#7: ticket filters + CSV export -------------------------------------
 
 def test_tickets_list_filters_by_language():

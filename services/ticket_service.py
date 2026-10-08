@@ -85,6 +85,27 @@ def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
     return ok
 
 
+def send_agent_reply(ticket_id: int, text: str, author_name: str = None) -> bool:
+    """Lets a support agent reply straight from this dashboard's ticket
+    detail page — no Zoho Desk round-trip needed. Reuses the same
+    messages-table sync path as the Zoho webhook's inbound comment
+    handling (dashboard_db.record_agent_message), so the visitor's chat
+    widget picks it up through its existing poll with zero client changes;
+    source='dashboard_agent' just distinguishes where the reply came from
+    in the messages table, same row shape either way. Requires the ticket
+    to have a live session_id (true for every ticket this bot raises from
+    an actual chat) — a ticket somehow missing one has nowhere to deliver
+    a reply to."""
+    text = (text or '').strip()
+    if not text:
+        return False
+    ticket = dashboard_db.get_ticket(ticket_id)
+    if not ticket or not ticket.get('session_id'):
+        return False
+    dashboard_db.record_agent_message(ticket['session_id'], text, author_name, source='dashboard_agent')
+    return True
+
+
 def update_ticket_assignee(ticket_id: int, admin_id) -> bool:
     """Manual reassignment from the ticket detail page — new tickets are
     already auto-assigned round-robin (dashboard_db.record_ticket), this

@@ -32,6 +32,28 @@
           {% endfor %}
         </div>
       </div>
+
+      {% if ticket.session_id %}
+      <div class="panel">
+        <h2>Replies sent to visitor</h2>
+        <div class="ticket-history">
+          {% for r in replies %}
+            <div class="history-row">
+              <span class="history-note">{{ r.text }}</span>
+              <span class="history-time">{{ r.created_at[:16].replace('T', ' ') }}</span>
+            </div>
+          {% else %}
+            <p class="empty-state">No replies sent yet.</p>
+          {% endfor %}
+        </div>
+        {% if current_user.role in ('admin', 'support_agent') %}
+        <form method="post">
+          <textarea name="reply" placeholder="Reply to the visitor — shows up in their chat" rows="3" required></textarea>
+          <button type="submit" class="ticket-update-btn">Send reply</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
 
     <div class="ticket-side">

@@ -281,6 +281,10 @@ def ticket_detail(ticket_id):
         elif 'assigned_admin_id' in request.form:
             raw = request.form.get('assigned_admin_id') or ''
             ticket_service.update_ticket_assignee(ticket_id, int(raw) if raw else None)
+        elif 'reply' in request.form:
+            reply_text = request.form.get('reply') or ''
+            author_name = auth.current_user().get('email')
+            ticket_service.send_agent_reply(ticket_id, reply_text, author_name=author_name)
         return redirect(url_for('dashboard.ticket_detail', ticket_id=ticket_id))
 
     ticket = db.get_ticket(ticket_id)
@@ -290,8 +294,14 @@ def ticket_detail(ticket_id):
             statuses=db.TICKET_STATUSES, assignable_admins=[], language_codes=db.LANGUAGE_CODES,
             show_nav=True, active='tickets',
         ), 404
+    # Past replies sent to this ticket's visitor — same query the chat
+    # widget's own poll uses (db.get_new_agent_messages with no 'since'
+    # returns the full backlog), so the dashboard shows exactly what the
+    # visitor has seen, regardless of whether a reply came from Zoho or
+    # was typed here.
+    replies = db.get_new_agent_messages(ticket['session_id'], None) if ticket.get('session_id') else []
     return render_template(
-        'ticket_detail.html', ticket=ticket, ticket_id=ticket_id,
+        'ticket_detail.html', ticket=ticket, ticket_id=ticket_id, replies=replies,
         statuses=db.TICKET_STATUSES, assignable_admins=db.list_assignable_admins(),
         language_codes=db.LANGUAGE_CODES, show_nav=True, active='tickets',
     )
