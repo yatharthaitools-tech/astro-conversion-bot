@@ -442,10 +442,49 @@ async function sendMessage(overrideText) {
   await sendToBot(text);
 }
 
-async function handlePhotoUpload(file) {
+// QA: "the uploaded image often doesn't come through" — traced to two
+// real causes, not a flaky network: a raw phone-camera photo commonly
+// runs 8-15MB (well past what most backends accept, this one included
+// until now), and iPhones save in HEIC by default, a format this app's
+// upload endpoint didn't accept at all. Resizing + re-encoding to JPEG
+// client-side fixes both — every upload becomes a predictable, small
+// JPEG regardless of source format or resolution.
+//
+// createImageBitmap can decode HEIC on WebKit (it uses the OS image
+// decoders, the same thing that makes HEIC "just work" as a Photos
+// thumbnail), so this isn't HEIC-specific special-casing — it's the
+// same path for every format, and it only needs one actual fallback:
+// if decoding fails outright (an older WebView with no HEIC codec),
+// return the original file untouched rather than losing the photo —
+// server-side still accepts heic/heif directly for exactly this case.
+const PHOTO_MAX_DIMENSION = 1600;
+const PHOTO_JPEG_QUALITY = 0.82;
+
+async function compressImageForUpload(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch (error) {
+    return file;
+  }
+  try {
+    const scale = Math.min(1, PHOTO_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', PHOTO_JPEG_QUALITY));
+    return blob ? new File([blob], 'photo.jpg', { type: 'image/jpeg' }) : file;
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function handlePhotoUpload(rawFile) {
   clearInactivityTimer();
-  const formData = new FormData();
-  formData.append('file', file);
 
   // #7 on the QA list ("chat breaks when multiple images are uploaded"):
   // the picker is single-select, but a fast double-tap on the camera
@@ -455,6 +494,10 @@ async function handlePhotoUpload(file) {
   // the button for the whole upload+reply round trip so that can't happen.
   photoBtn.disabled = true;
   try {
+    const file = await compressImageForUpload(rawFile);
+    const formData = new FormData();
+    formData.append('file', file);
+
     const response = await fetch('/upload', { method: 'POST', body: formData });
     const data = await response.json();
     if (!data.url) throw new Error('upload failed');

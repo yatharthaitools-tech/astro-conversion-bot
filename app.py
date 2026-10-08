@@ -1,5 +1,6 @@
 import base64
 import hmac
+import io
 import logging
 import mimetypes
 import os
@@ -23,7 +24,14 @@ from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on uploaded photos
+#  QA: "the uploaded image often doesn't come through" — script.js now
+# compresses a photo client-side before upload (resize + re-encode to
+# JPEG), which brings almost every real phone photo in well under this,
+# but a WebView that can't decode the source (so compression falls back
+# to the original file untouched) still needs real headroom: a modern
+# phone camera's raw JPEG commonly runs 8-15MB. 5MB was silently
+# rejecting a large share of uploads outright.
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB cap on uploaded photos
 app.register_blueprint(dashboard_bp)
 dashboard_db.init_db()
 # admin_users/dashboard_config must exist first (init_db above), and the
@@ -42,7 +50,13 @@ app.secret_key = os.environ.get('ADMIN_SESSION_SECRET') or dashboard_db.get_or_c
 dashboard_auth.bootstrap()
 
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
-ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+# heic/heif: iPhone's native camera format (Settings > Camera > Formats
+# > High Efficiency, the default) — script.js's client-side compression
+# re-encodes to JPEG before upload when the browser can decode the
+# source, but a WebView that can't decode HEIC passes the original
+# through unchanged, so the server has to accept it too rather than
+# reject a huge share of iPhone photos outright.
+ALLOWED_UPLOAD_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 PRD_INTENTS = {
@@ -291,22 +305,42 @@ def upload():
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         return jsonify({'error': 'Unsupported file type'}), 400
 
+    # Read once into memory rather than handing boto3 the request's own
+    # stream directly — s3transfer's managed upload closes the stream it's
+    # given on failure as part of its own cleanup (confirmed: a seek()
+    # after a failed upload_fileobj raises "seek of closed file"), so a
+    # local-disk fallback reading from that same stream would either
+    # crash or write a truncated file. Bytes in memory are also what let
+    # a PutObject failure at ANY point mid-stream still fall back cleanly.
+    file_bytes = file.read()
+
     # S3 when configured — local disk doesn't survive a pod restart/
     # redeploy, and is invisible across replicas behind a load balancer,
     # which is exactly what "photo not displayed / broken image" looks
     # like in a multi-pod production deployment (see photo_storage.py's
-    # own docstring). Local disk stays the fallback for local dev.
+    # own docstring).
+    #
+    # QA: "the uploaded image often doesn't come through" traced to a
+    # real, 100%-reproducible S3 PutObject AccessDenied (an IAM policy
+    # gap on this bucket/prefix — needs fixing on the AWS side, this
+    # code can't grant itself permissions). Previously any S3 failure
+    # hard-failed the whole upload with no fallback, so every single
+    # photo share was silently broken for as long as that gap existed.
+    # Falling back to local disk here means a photo still displays and
+    # still reaches Gemini vision for the CURRENT turn even while S3 is
+    # down/misconfigured — it just won't survive a pod restart until the
+    # underlying permission is fixed, which beats not working at all.
     if photo_storage.is_configured():
         mime_type, _ = mimetypes.guess_type(file.filename)
         try:
-            url = photo_storage.save(file, ext, mime_type or 'application/octet-stream')
+            url = photo_storage.save(io.BytesIO(file_bytes), ext, mime_type or 'application/octet-stream')
             return jsonify({'url': url})
         except Exception:
-            logger.exception('Photo upload to S3 failed')
-            return jsonify({'error': 'Upload failed'}), 502
+            logger.exception('Photo upload to S3 failed — falling back to local disk')
 
     safe_name = f"{uuid.uuid4().hex}.{ext}"
-    file.save(os.path.join(UPLOAD_FOLDER, secure_filename(safe_name)))
+    with open(os.path.join(UPLOAD_FOLDER, secure_filename(safe_name)), 'wb') as f:
+        f.write(file_bytes)
     return jsonify({'url': url_for('static', filename=f'uploads/{safe_name}')})
 
 

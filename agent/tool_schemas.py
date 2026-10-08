@@ -531,8 +531,17 @@ GET_APP_FAQ = {
         "etc.) from AstroLokal's own FAQ. ALWAYS call this for general "
         "app-usage questions instead of answering from your own general "
         "knowledge. If it returns no match, say so honestly rather than "
-        "guessing how the app works — and only suggest connecting with an "
-        "astrologer if that's actually relevant to what they asked."
+        "guessing how the app works.\n\n"
+        "For a 'how do I use the app' / 'how does this work' question "
+        "specifically (as opposed to a narrower question like refund "
+        "policy), ALSO call trigger_recommend_astrologer in the same "
+        "turn right after giving the real FAQ answer — the best way to "
+        "actually see how the app works is to connect with an "
+        "astrologer right now, so make that the natural next line "
+        "('best way to see it in action — want me to connect you?'), "
+        "not a bolted-on offer. For a narrower FAQ question (refund "
+        "policy, what coins are, etc.) only suggest connecting if that's "
+        "actually relevant to what they asked."
     ),
     "input_schema": {
         "type": "object",

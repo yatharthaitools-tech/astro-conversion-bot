@@ -82,7 +82,33 @@ def test_upload_route_uses_s3_when_configured(monkeypatch):
     assert resp.get_json()["url"] == "https://astrolokal-uploads.s3.ap-south-1.amazonaws.com/x.png?sig=1"
 
 
-def test_upload_route_returns_502_on_s3_failure(monkeypatch):
+def test_upload_route_accepts_heic_and_heif(monkeypatch):
+    # iPhone's default camera format — previously rejected outright with
+    # "Unsupported file type", a large share of real uploads from iOS
+    # since script.js's client-side compression falls back to the
+    # original file untouched when the WebView can't decode it.
+    monkeypatch.setattr(app_module.photo_storage, "is_configured", lambda: False)
+    client = app_module.app.test_client()
+    for filename in ("photo.heic", "photo.HEIF"):
+        resp = client.post(
+            "/upload", data={"file": (io.BytesIO(b"fake-bytes"), filename)},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200, resp.get_json()
+        url = resp.get_json()["url"]
+        import os
+        saved_path = os.path.join(app_module.UPLOAD_FOLDER, url.rsplit("/", 1)[-1])
+        assert os.path.exists(saved_path)
+        os.remove(saved_path)
+
+
+def test_upload_route_falls_back_to_local_disk_on_s3_failure(monkeypatch):
+    # QA: "the uploaded image often doesn't come through" traced to a
+    # real, 100%-reproducible S3 PutObject AccessDenied in production (an
+    # IAM policy gap) — previously any S3 exception hard-failed the whole
+    # upload with a 502 and no fallback, so every photo share was broken
+    # for as long as that gap existed. A real S3 failure must now still
+    # succeed via local disk rather than losing the photo outright.
     monkeypatch.setattr(app_module.photo_storage, "is_configured", lambda: True)
 
     def boom(file, ext, mime_type):
@@ -96,7 +122,17 @@ def test_upload_route_returns_502_on_s3_failure(monkeypatch):
         content_type="multipart/form-data",
     )
 
-    assert resp.status_code == 502
+    assert resp.status_code == 200
+    url = resp.get_json()["url"]
+    assert url.startswith(f"{app_module.app.static_url_path}/uploads/")
+
+    import os
+    saved_name = url.rsplit("/", 1)[-1]
+    saved_path = os.path.join(app_module.UPLOAD_FOLDER, saved_name)
+    assert os.path.exists(saved_path)
+    with open(saved_path, "rb") as f:
+        assert f.read() == b"fake-bytes"
+    os.remove(saved_path)
 
 
 def test_upload_route_falls_back_to_local_disk_when_s3_not_configured(monkeypatch):

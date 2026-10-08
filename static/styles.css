@@ -11,7 +11,17 @@
   --radius: 22px;
 }
 
-* { box-sizing: border-box; }
+/* QA: tapping any button flashed the default mobile blue/grey highlight
+   — WebView/mobile Chrome/Safari all paint one on any tappable element
+   by default, same cause behind that flash on every link/button on a
+   phone browser generally. We already show our own :active press state
+   on every button (scale/background change), so the native overlay is
+   redundant on top of being visually jarring here. */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+}
 html, body {
   margin: 0;
   min-height: 100%;
@@ -24,6 +34,7 @@ html, body {
   justify-content: center;
 }
 button, input { font: inherit; }
+button { -webkit-touch-callout: none; user-select: none; }
 
 /* This page IS the chat widget — no host-app backdrop, no FAB, no toggle.
    Still styled like a "modal" card (rounded, shadowed) per the design

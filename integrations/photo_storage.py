@@ -48,10 +48,10 @@ def save(file_storage, ext: str, mime_type: str) -> str:
     """Uploads to S3 and returns a presigned URL the browser can load
     directly — or None if S3 isn't configured, so the caller falls back
     to local disk. Raises on a real S3 failure rather than swallowing it
-    (unlike s3_client.log_event's best-effort posture): an upload the
-    caller already treats as all-or-nothing ('Sorry, I couldn't upload
-    that photo' on any failure), so silently losing the image data while
-    claiming success would be worse than a clear, visible failure."""
+    (unlike s3_client.log_event's best-effort posture) — app.py's /upload
+    route catches this and falls back to local disk for that one upload
+    too, but still needs a real exception to know to do that, rather
+    than a None indistinguishable from "not configured"."""
     if not is_configured():
         return None
     key = f"{S3_UPLOADS_PREFIX}/{uuid.uuid4().hex}.{ext}"
