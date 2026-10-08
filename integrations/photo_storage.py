@@ -16,6 +16,7 @@ same posture as every other S3_BUCKET-gated integration in this app.
 """
 import logging
 import os
+import urllib.parse
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ AWS_REGION = os.environ.get('AWS_REGION', 'ap-south-1')
 PRESIGNED_URL_EXPIRY_SECONDS = int(os.environ.get('UPLOAD_URL_EXPIRY_SECONDS', str(7 * 24 * 3600)))
 
 _s3_client = None
+_uploads_host = None
 
 
 def is_configured() -> bool:
@@ -42,6 +44,28 @@ def _get_client():
         import boto3  # imported lazily so boto3 is only required when S3 is actually used
         _s3_client = boto3.client('s3', region_name=AWS_REGION)
     return _s3_client
+
+
+def uploads_host() -> str:
+    """The real hostname a presigned GET URL for this bucket actually
+    has — app.py's load_current_photo() uses this to verify a marker URL
+    really points at OUR bucket before fetching it (an SSRF guard).
+    Deliberately NOT hardcoded as f"{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com"
+    — boto3's virtual-hosted-style endpoint can omit the region entirely
+    (confirmed against this exact bucket: the real host is
+    astrolokal.s3.amazonaws.com, not astrolokal.s3.ap-south-1.amazonaws.com),
+    so that guessed format silently never matched and vision never
+    actually received an S3-stored photo. generate_presigned_url is pure
+    local HMAC signing — no network call — so computing a throwaway one
+    just to read its host back is free and exactly matches what save()
+    itself will produce."""
+    global _uploads_host
+    if _uploads_host is None:
+        probe_url = _get_client().generate_presigned_url(
+            'get_object', Params={'Bucket': S3_BUCKET, 'Key': '__uploads_host_probe__'}, ExpiresIn=60,
+        )
+        _uploads_host = urllib.parse.urlparse(probe_url).hostname
+    return _uploads_host
 
 
 def save(file_storage, ext: str, mime_type: str) -> str:

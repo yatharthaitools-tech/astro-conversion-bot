@@ -365,10 +365,7 @@ def find_last_attachment_url(question: str, history: list):
     return None
 
 
-_S3_UPLOADS_HOST = (
-    f"{photo_storage.S3_BUCKET}.s3.{photo_storage.AWS_REGION}.amazonaws.com"
-    if photo_storage.is_configured() else None
-)
+_S3_UPLOADS_HOST = photo_storage.uploads_host() if photo_storage.is_configured() else None
 
 
 def load_current_photo(question: str):
