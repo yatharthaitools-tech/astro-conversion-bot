@@ -25,6 +25,14 @@ satisfy the mandatory-field requirement, and keeps the model's actual
 free-text sub-category where a human reads it (the subject line and
 description) instead of trying to force it into that picklist.
 
+cf_user_type (the real "User Type" field — Astrologer / Customer /
+Onboarding / N/A) is ALSO mandatory on the real layout, with
+defaultValue "Astrologer" — this app's own AstroHelp sibling raises
+tickets for BOTH astrologers and customers, so that field exists to
+distinguish them; every ticket this bot raises is about a chat visitor,
+never an astrologer, so create_ticket always sends "Customer" explicitly
+rather than silently inheriting Zoho's own wrong default.
+
 cf_user_id / cf_ltv_tier do NOT exist as custom fields on the real
 layout at all (confirmed from the same layout pull — there's no field
 with either of those purposes defined). create_ticket deliberately does
@@ -160,12 +168,18 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
             # cf_sub_issue is mandatory on the real layout but has no
             # field matching this bot's own free-text sub_category (see
             # module docstring) — just satisfies that requirement.
-            # cf_user_id/cf_ltv_tier are deliberately NOT sent here: no
-            # such custom fields exist on the real layout (see docstring);
-            # that info already reaches CS via contact.lastName and the
-            # subject line below instead.
+            # cf_user_type is ALSO mandatory on the real layout, with
+            # defaultValue "Astrologer" — every ticket this bot raises is
+            # about a CHAT VISITOR, never an astrologer, so this must be
+            # explicit or every ticket silently gets mistagged as the
+            # wrong user type via Zoho's own default. cf_user_id/
+            # cf_ltv_tier are deliberately NOT sent here: no such custom
+            # fields exist on the real layout (see docstring); that info
+            # already reaches CS via contact.lastName and the subject
+            # line below instead.
             "customFields": {
                 "cf_sub_issue": _ZOHO_SUB_ISSUE_PLACEHOLDER,
+                "cf_user_type": "Customer",
             },
         }
         if evidence_url:

@@ -1,13 +1,14 @@
 """zoho_client.create_ticket's real (non-mock) payload — verified against
 the actual "Astro Lokal" Desk portal layout (GET /api/v1/layouts, see
 zoho_client.py's module docstring): category must be one of the real 15
-picklist values, cf_sub_issue is a mandatory picklist with no field this
-bot's free-text sub_category can reliably match (so a fixed placeholder
-satisfies it instead), and cf_user_id/cf_ltv_tier don't exist as real
-custom fields at all — user_id/ltv_tier instead travel via contact name
-and the subject line. Mocks requests.post the same way
-test_coin_credit_client.py mocks its own outbound call — no real network,
-no real Zoho org needed.
+picklist values, cf_sub_issue and cf_user_type are both mandatory
+picklists (cf_sub_issue has no field this bot's free-text sub_category
+can reliably match, so a fixed placeholder satisfies it; cf_user_type
+must always be "Customer", not Zoho's own "Astrologer" default), and
+cf_user_id/cf_ltv_tier don't exist as real custom fields at all —
+user_id/ltv_tier instead travel via contact name and the subject line.
+Mocks requests.post the same way test_coin_credit_client.py mocks its
+own outbound call — no real network, no real Zoho org needed.
 """
 from unittest.mock import patch
 
@@ -49,7 +50,11 @@ def test_real_ticket_sends_only_verified_custom_fields(monkeypatch):
     # cf_user_id/cf_ltv_tier are NOT real custom fields on the live
     # layout — sending them risks a silent drop or a validation error,
     # for no gain, since this info already reaches CS another way (below).
-    assert captured["json"]["customFields"] == {"cf_sub_issue": "General Inquiry"}
+    # cf_user_type IS real and mandatory — must always be "Customer",
+    # never Zoho's own "Astrologer" default.
+    assert captured["json"]["customFields"] == {
+        "cf_sub_issue": "General Inquiry", "cf_user_type": "Customer",
+    }
     assert "u_4851070" in captured["json"]["contact"]["lastName"]
     assert "high" in captured["json"]["subject"]
 
@@ -63,7 +68,9 @@ def test_ltv_tier_defaults_to_unranked_in_subject(monkeypatch):
     )
 
     assert "unranked" in captured["json"]["subject"]
-    assert captured["json"]["customFields"] == {"cf_sub_issue": "General Inquiry"}
+    assert captured["json"]["customFields"] == {
+        "cf_sub_issue": "General Inquiry", "cf_user_type": "Customer",
+    }
 
 
 def test_category_map_uses_only_real_portal_values():
