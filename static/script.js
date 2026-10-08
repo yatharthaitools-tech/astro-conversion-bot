@@ -59,7 +59,14 @@ const TARA_AVATAR_IMG = '<img src="/static/avatars/tara-avatar.png" alt="" />';
 // each bot reply, cleared on any new activity (sending a message, or the
 // chat ending) — fires once per idle window, not repeatedly.
 const INACTIVITY_MS = 20000;
+// If the nudge above doesn't get a response either, actually end the
+// session at 1 minute of total idle — same close path as the header X,
+// the nudge's own "Close it out" button, and the post-rating auto-close
+// (see closeChat's own comment: "the one place the chat session actually
+// ends"), so a chat nobody's looking at doesn't just sit open forever.
+const AUTO_CLOSE_INACTIVITY_MS = 60000;
 let inactivityTimer = null;
+let autoCloseTimer = null;
 let hasStartedConversation = false;
 
 // #3: once a ticket exists for this session, a real Zoho agent might
@@ -119,6 +126,7 @@ function armInactivityTimer() {
   clearInactivityTimer();
   if (!hasStartedConversation || chatInput.disabled) return;
   inactivityTimer = setTimeout(showInactivityNudge, INACTIVITY_MS);
+  autoCloseTimer = setTimeout(autoCloseIdleSession, AUTO_CLOSE_INACTIVITY_MS);
 }
 
 function clearInactivityTimer() {
@@ -126,6 +134,19 @@ function clearInactivityTimer() {
     clearTimeout(inactivityTimer);
     inactivityTimer = null;
   }
+  if (autoCloseTimer) {
+    clearTimeout(autoCloseTimer);
+    autoCloseTimer = null;
+  }
+}
+
+// Fires once at AUTO_CLOSE_INACTIVITY_MS of total idle (chatInput.disabled
+// already true means some other path — e.g. post-rating auto-close —
+// beat this one to it, so just no-op rather than closing twice).
+function autoCloseIdleSession() {
+  if (chatInput.disabled) return;
+  trackEvent('auto_close_inactivity', { screen_name: 'chatbot_screen', event_type: 'app' });
+  closeChat();
 }
 
 // Handed off by the native app via ?user_id=...&oauth_token=... on the
@@ -160,11 +181,31 @@ function buildWelcomeMessage() {
   return name ? `Hi ${name}! How can I help you today?` : 'Hi! How can I help you today?';
 }
 
+// localStorage, not sessionStorage: this must survive the native app
+// tearing down and recreating its WebView, which happens every time the
+// visitor closes and reopens the chat (a fresh "browser session" from
+// the WebView engine's own perspective even though it's the same app
+// install) — sessionStorage was wiped on exactly that, which is why
+// returning visitors never saw their chat history even though it was
+// sitting in Postgres the whole time (dashboard_db.record_turn persists
+// every turn — see /history's own docstring in app.py). Wrapped in
+// try/catch since storage access can throw (private browsing, a WebView
+// with storage disabled by device policy) — falls back to an in-memory
+// id for just this page load rather than breaking the chat outright.
 function getSessionId() {
-  let sessionId = sessionStorage.getItem('astro_session_id');
+  let sessionId = null;
+  try {
+    sessionId = localStorage.getItem('astro_session_id');
+  } catch (error) {
+    sessionId = null;
+  }
   if (!sessionId) {
     sessionId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
-    sessionStorage.setItem('astro_session_id', sessionId);
+    try {
+      localStorage.setItem('astro_session_id', sessionId);
+    } catch (error) {
+      // Storage blocked — this id just won't survive a reopen.
+    }
   }
   return sessionId;
 }
@@ -263,15 +304,20 @@ function appendSessionClosedNote(isoTime) {
 
 const _PHOTO_MARKER_RE = /\[Shared a photo: (\S+)\]/;
 
-// #3 on the QA list: a reload within the same browser/WebView session
-// (sessionStorage intact) always showed a blank chat with the welcome
-// message again, even though the real conversation was sitting in
-// Postgres the whole time (dashboard_db.record_turn persists every
+// #3 on the QA list: a reload/reopen always showed a blank chat with the
+// welcome message again, even though the real conversation was sitting
+// in Postgres the whole time (dashboard_db.record_turn persists every
 // turn) — it just never got read back. An existing session_id here
-// means this is a continuing session, not a first-ever visit, so fetch
-// and replay the real history instead of starting over.
+// (now in localStorage — see getSessionId's own comment on why not
+// sessionStorage) means this is a continuing session, not a first-ever
+// visit, so fetch and replay the real history instead of starting over.
 async function restoreHistoryOrShowWelcome() {
-  const existingSessionId = sessionStorage.getItem('astro_session_id');
+  let existingSessionId = null;
+  try {
+    existingSessionId = localStorage.getItem('astro_session_id');
+  } catch (error) {
+    existingSessionId = null;
+  }
   if (existingSessionId) {
     try {
       const response = await fetch(`/history/${existingSessionId}`);

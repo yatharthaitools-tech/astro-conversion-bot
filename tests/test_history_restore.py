@@ -1,9 +1,11 @@
 """QA bug #3 ('chat history is not getting saved') — it was actually
 always being saved (dashboard_db.record_turn persists every turn), just
 never read back: the page always rendered a blank chatBody and the
-welcome message again on reload, even with the same session_id still in
-sessionStorage. app.py's /history/<session_id> is what script.js's
-restoreHistoryOrShowWelcome() now calls to fix that.
+welcome message again on reload/reopen. app.py's /history/<session_id>
+is what script.js's restoreHistoryOrShowWelcome() calls to fix that —
+the session_id it's keyed on now lives in localStorage, not
+sessionStorage, so it actually survives the native app's WebView being
+torn down and recreated (see getSessionId's own comment in script.js).
 """
 import pytest
 
