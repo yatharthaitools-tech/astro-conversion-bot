@@ -68,21 +68,47 @@ PRD_INTENTS = {
         }
     },
     'career': {
-        'keywords': ['career', 'job', 'business', 'work', 'professional', 'career concern', 'job stability'],
+        # Keywords below are English + the 4 regional scripts (hi/ta/te/ml)
+        # in ONE flat list, same as is_prediction_intent's own multi-
+        # language PREDICTION_KEYWORDS — map_intent() doesn't need to know
+        # which language it's matching against, substring containment
+        # alone is enough (normalize_text already whitelists these script
+        # ranges, see its own comment). This is what lets concern_for_
+        # intent identify a concern for a regional-language question too,
+        # not just English.
+        'keywords': [
+            'career', 'job', 'business', 'work', 'professional', 'career concern', 'job stability',
+            'करियर', 'नौकरी', 'व्यापार', 'व्यवसाय', 'काम', 'जॉब',
+            'தொழில்', 'வேலை', 'வியாபாரம்', 'உத்தியோகம்',
+            'కెరీర్', 'ఉద్యోగం', 'వ్యాపారం', 'పని',
+            'കരിയർ', 'ജോലി', 'ബിസിനസ്സ്',
+        ],
         'answers': {
             'en': 'I can help with career-related guidance. A career consultation may be the best fit. Would you like to speak with an astrologer or explore available packages?',
             'hi': 'मैं कैरियर से जुड़े मार्गदर्शन में मदद कर सकता हूँ। कैरियर परामर्श सबसे उपयुक्त हो सकता है। क्या आप ज्योतिषी से बात करना चाहेंगे या उपलब्ध पैकेज देखें?'
         }
     },
     'love': {
-        'keywords': ['love', 'relationship', 'partner', 'dating', 'romantic', 'love life', 'relationship problem'],
+        'keywords': [
+            'love', 'relationship', 'partner', 'dating', 'romantic', 'love life', 'relationship problem',
+            'प्यार', 'रिश्ता', 'रिलेशनशिप', 'पार्टनर', 'प्रेम',
+            'காதல்', 'உறவு', 'துணை',
+            'ప్రేమ', 'సంబంధం', 'భాగస్వామి',
+            'പ്രണയം', 'ബന്ധം', 'പങ്കാളി',
+        ],
         'answers': {
             'en': 'I can help with relationship guidance. I can connect you with a relationship specialist or suggest a suitable consultation package.',
             'hi': 'मैं रिश्ते और प्रेम से जुड़े मार्गदर्शन में मदद कर सकता हूँ। मैं आपको रिलेशनशिप स्पेशलिस्ट से जोड़ सकता हूँ या उचित परामर्श पैकेज सुझा सकता हूँ।'
         }
     },
     'finance': {
-        'keywords': ['finance', 'money', 'financial', 'wealth', 'income', 'business growth', 'financial future'],
+        'keywords': [
+            'finance', 'money', 'financial', 'wealth', 'income', 'business growth', 'financial future',
+            'पैसा', 'पैसों', 'वित्त', 'धन', 'आमदनी', 'फाइनेंस',
+            'பணம்', 'நிதி', 'வருமானம்',
+            'డబ్బు', 'ఆర్థిక', 'ఆదాయం',
+            'പണം', 'സാമ്പത്തികം', 'വരുമാനം',
+        ],
         'answers': {
             'en': 'I can help with finance-related guidance. A financial astrology consultation may be suitable. Would you like to book a session?',
             'hi': 'मैं वित्त से जुडे़ मार्गदर्शन में मदद कर सकता हूँ। वित्तीय ज्योतिष परामर्श उपयुक्त हो सकता है। क्या आप बैठक बुक करना चाहेंगे?'
@@ -95,7 +121,13 @@ PRD_INTENTS = {
         # silently missing this bucket entirely, falling through to
         # concern_for_intent's 'general' default and losing the specific
         # concern the deflection's own connect-card and text both need.
-        'keywords': ['marriage', 'wedding', 'husband', 'wife', 'marriage prospects', 'shaadi', 'married', 'get married'],
+        'keywords': [
+            'marriage', 'wedding', 'husband', 'wife', 'marriage prospects', 'shaadi', 'married', 'get married',
+            'शादी', 'विवाह', 'पति', 'पत्नी',
+            'திருமணம்', 'கல்யாணம்', 'கணவர்', 'மனைவி',
+            'పెళ్లి', 'వివాహం', 'భర్త', 'భార్య',
+            'വിവാഹം', 'കല്യാണം', 'ഭർത്താവ്', 'ഭാര്യ',
+        ],
         'answers': {
             'en': 'I can help with marriage-related guidance. I can suggest the right consultation based on your concern and preferred service.',
             'hi': 'मैं शादी से जुड़े मार्गदर्शन में मदद कर सकता हूँ। आपकी चिंता और पसंद के अनुसार सही परामर्श सुझा सकता हूँ।'
