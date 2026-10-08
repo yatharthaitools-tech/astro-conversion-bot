@@ -279,18 +279,21 @@ def concern_for_intent(intent) -> str:
 
 @app.route('/')
 def home():
-    # The native app opens this page with ?user_id=...&oauth_token=...
-    # &user_name=...&ltv=... so the bot knows who's actually chatting and
-    # their real ₹ lifetime spend — see agent/context.py's resolve_session
-    # for how these get trusted (or not) once they reach /ask. Embedded
-    # into the page below so script.js can carry them on every request
-    # without re-reading location.search each time.
+    # Two real link formats open this page, both confirmed against
+    # production: the native app's own WebView uses ?user_id=...&
+    # oauth_token=...&user_name=...&ltv=..., while the "Chat with us"
+    # support/CRM link uses ?user_id=...&name=...&ltv=... with no
+    # oauth_token at all. `name` wins when both happen to be present —
+    # see agent/context.py's resolve_session for how these get trusted
+    # (or not) once they reach /ask. Embedded into the page below so
+    # script.js can carry them on every request without re-reading
+    # location.search each time.
     return render_template(
         'index.html',
         quick_replies=quick_replies,
         user_id=request.args.get('user_id', ''),
         oauth_token=request.args.get('oauth_token', ''),
-        user_name=request.args.get('user_name', ''),
+        user_name=request.args.get('name') or request.args.get('user_name', ''),
         ltv=request.args.get('ltv', ''),
     )
 

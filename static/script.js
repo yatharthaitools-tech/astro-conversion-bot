@@ -140,15 +140,16 @@ const appUserName = document.body.dataset.userName || '';
 const appLtv = document.body.dataset.ltv || '';
 
 // Same identity trust rule as agent/context.py's resolve_session(): a
-// name is only usable when it rode along with a real identity (both
-// user_id and oauth_token present — a bare name with no token is
-// exactly what a spoofed/untrusted request would send), and "Guest"
+// name is usable whenever it rode along with a real user_id — two real
+// link formats do this (the native app's WebView with oauth_token, and
+// the "Chat with us" support/CRM link without one), so oauth_token is
+// NOT required here either, same relaxation as the backend. "Guest"
 // (the app's own placeholder for an anonymous session) is never usable
 // either way, case-insensitively, same as the backend.
 const GREETING_PLACEHOLDER_NAMES = new Set(['guest']);
 
 function resolveGreetingName() {
-  if (!appUserId || !appOauthToken) return null;
+  if (!appUserId) return null;
   const trimmed = appUserName.trim();
   if (!trimmed || GREETING_PLACEHOLDER_NAMES.has(trimmed.toLowerCase())) return null;
   return trimmed;

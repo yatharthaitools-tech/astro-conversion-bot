@@ -2,21 +2,24 @@
 never from tool input or the model. executor.py is what actually enforces
 this (see its docstring) — this module just defines the shape.
 
-The native app hands off a real user_id + oauth_token (see app.py's /
-route and static/script.js) whenever it opens this chat in a WebView.
-resolve_session() below trusts that pair as the real identity — but
-"trust" here just means "use it", not "cryptographically verified": there
-is no JWT/signature check against the app's own auth service yet, only
-requiring both fields be non-empty together (a bare user_id with no
-token at all is NOT trusted — see _real_identity_from). Add real
-verification (decode/introspect oauth_token against whatever issues it)
-before this identity is used for anything money-moving; until then this
-is "mocked-then-real" the same way the rest of this app's integrations
-are, and this docstring is the flag for that gap.
+Two real link formats open this chat, both confirmed against production:
+the native app's own WebView hands off user_id + oauth_token (see
+app.py's / route and static/script.js); a "Chat with us" support/CRM
+link hands off only user_id (+ name/ltv) with no oauth_token at all —
+generated server-side per user by that system, not something a visitor
+freely edits to pose as someone else, which is why user_id ALONE is
+trusted as the real identity (see _real_identity_from) rather than
+requiring oauth_token too. "trust" here just means "use it", not
+"cryptographically verified": there is no JWT/signature check against
+the app's own auth service yet. Add real verification (decode/introspect
+oauth_token against whatever issues it, when one is present) before this
+identity is used for anything money-moving; until then this is
+"mocked-then-real" the same way the rest of this app's integrations are,
+and this docstring is the flag for that gap.
 
-Without either field (local/dev testing, or the page opened outside the
-app), a stable pseudo-id is derived from session_id alone instead, same
-as before this app/oauth handoff existed.
+Without user_id (local/dev testing, or the page opened outside either of
+the two link formats above), a stable pseudo-id is derived from
+session_id alone instead, same as before this app/oauth handoff existed.
 """
 import hashlib
 from dataclasses import dataclass, field
@@ -40,13 +43,14 @@ class SessionContext:
 
 
 def _real_identity_from(payload: dict) -> tuple:
-    """Both user_id and oauth_token must be present together to be used —
-    a bare user_id with no token is exactly what a spoofed request would
-    send, so it's treated the same as having neither."""
+    """user_id alone is the real identity (see module docstring for why
+    oauth_token isn't required) — oauth_token still rides along
+    unverified when the native app's WebView flow does send one, it's
+    just no longer a precondition for user_id/name/ltv to be trusted."""
     user_id = str((payload or {}).get("user_id") or "").strip()
     oauth_token = str((payload or {}).get("oauth_token") or "").strip()
-    if user_id and oauth_token:
-        return user_id, oauth_token
+    if user_id:
+        return user_id, (oauth_token or None)
     return None, None
 
 

@@ -64,20 +64,31 @@ def test_create_support_ticket_ignores_spoofed_user_id():
     assert real_tickets[0]["user_id"] == real_user_id
 
 
-def test_resolve_session_requires_both_user_id_and_oauth_token():
+def test_resolve_session_trusts_user_id_alone_without_oauth_token():
     from agent.context import resolve_session
 
-    # A bare user_id with no token is exactly what a spoofed request would
-    # send — resolve_session must not trust it on its own.
+    # The "Chat with us" support/CRM link hands off only user_id (+
+    # name/ltv) with no oauth_token at all — confirmed against a real
+    # production link. user_id alone must still be trusted as the real
+    # identity (see agent/context.py's module docstring for why this
+    # isn't the same risk as a visitor-editable field).
     ctx = resolve_session({"user_id": "claimed_identity"}, "sess-1", "en", [])
-    assert ctx.user_id != "claimed_identity"
+    assert ctx.user_id == "claimed_identity"
+    assert ctx.oauth_token is None
 
-    # Both present together is what the real app handoff looks like.
+    # The native app's WebView flow still sends oauth_token too — it
+    # rides along unverified exactly as before.
     ctx2 = resolve_session(
         {"user_id": "claimed_identity", "oauth_token": "some-token"}, "sess-1", "en", []
     )
     assert ctx2.user_id == "claimed_identity"
     assert ctx2.oauth_token == "some-token"
+
+    # No user_id at all (page opened outside either real link format) is
+    # the one case that still falls back to a session-derived pseudo-id.
+    ctx3 = resolve_session({}, "sess-1", "en", [])
+    assert ctx3.user_id != "claimed_identity"
+    assert ctx3.oauth_token is None
 
 
 def test_user_name_filters_the_guest_placeholder():
@@ -97,7 +108,11 @@ def test_user_name_filters_the_guest_placeholder():
     )
     assert ctx2.user_name == "Priya"
 
-    # No oauth_token -> no real identity -> user_name never trusted either,
-    # even if it looks like a real name.
+    # No oauth_token but a real user_id -> still the real identity (the
+    # "Chat with us" link format) -> user_name IS trusted.
     ctx3 = resolve_session({"user_id": "u1", "user_name": "Priya"}, "sess-1", "en", [])
-    assert ctx3.user_name is None
+    assert ctx3.user_name == "Priya"
+
+    # No user_id at all -> no real identity -> user_name never trusted.
+    ctx4 = resolve_session({"user_name": "Priya"}, "sess-1", "en", [])
+    assert ctx4.user_name is None

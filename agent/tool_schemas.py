@@ -78,7 +78,10 @@ GET_LTV_TIER = {
         "New-Low, Mid, High). Informational — mainly useful to explain why "
         "a coin credit is or isn't being offered. credit_coins already "
         "checks this itself; you don't need to call this first just to "
-        "decide whether to call credit_coins."
+        "decide whether to call credit_coins. For your own reasoning "
+        "only — never state the tier, a figure, or that you looked this "
+        "up to the visitor; it's backend context, not something to "
+        "surface in the conversation."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
