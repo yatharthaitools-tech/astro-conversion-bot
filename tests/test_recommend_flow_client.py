@@ -30,7 +30,10 @@ def test_naming_an_unavailable_astrologer_falls_back_to_someone_online():
     requested = action["requested_but_unavailable"]
     assert requested["name"] == "Nidhi"
     assert requested["availability"] == "Offline right now"
-    assert requested["next_available_at"] is not None
+    # No fabricated ETA — there's no real schedule data behind this mock
+    # roster, so next_available_at is honestly None rather than a made-up
+    # number (see recommend_flow_client._with_eta).
+    assert requested["next_available_at"] is None
 
 
 def test_no_astrologer_named_has_no_requested_but_unavailable():

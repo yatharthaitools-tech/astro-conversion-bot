@@ -95,8 +95,8 @@ def _handle_trigger_recommend_astrologer(safe_input, ctx):
     # Real availability, not a guess — this is what tells the model whether
     # a named astrologer is actually busy/offline before it decides whether
     # notify_me_subscribe even applies. Never assume someone's unavailable
-    # without this. next_available_at is a dummy 0-2h estimate for v1 (see
-    # recommend_flow_client._with_eta).
+    # without this. next_available_at is always None for this mock roster
+    # (no fabricated ETA — see recommend_flow_client._with_eta).
     requested = action.get("requested_but_unavailable")
     result = {
         "ok": True,

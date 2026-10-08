@@ -22,16 +22,21 @@ changes what the visitor sees on the card itself, which is why `concern`
 no longer affects the card's copy — it's still accepted and still shapes
 the bot's own chat text, just not this component.
 
-"When will X be back" answers are DELIBERATELY dummy for v1, same
-"don't depend on Redash for this" call as the refund engine: no real
-schedule data, no expert_id lookup (redash_client.get_astrologer_
-availability still exists for a possible v2, just not called from
-here) — anyone not "Available now" gets a fresh random 0-2h wait
-computed on the spot (_with_eta below), and the required next move for
-the model is always to push connecting with someone else right now
-instead (see agent/tool_schemas.py's TRIGGER_RECOMMEND_ASTROLOGER).
+"When will X be back" has no real answer for this mock roster: there's
+no expert_id mapping from these 3 placeholder ids to real Redash
+records, so redash_client.get_astrologer_availability (which DOES
+return a real predicted return time, see its own module and tests)
+can't be called from here without guessing at that mapping. This used
+to fabricate a random 5-120 minute ETA instead — removed: a plausible-
+looking fake number is worse than admitting we don't know, and the
+rest of this app already treats next_available_at=None as "genuinely no
+known return time" (see agent/tool_schemas.py's TRIGGER_RECOMMEND_
+ASTROLOGER and NOTIFY_ME_SUBSCRIBE descriptions). The required next
+move for the model is always to push connecting with someone else right
+now instead, same as before. Wiring the real Redash call back in just
+needs a real id mapping for this roster — not a new integration, the
+function to call already exists.
 """
-import random
 import re
 
 _TITLE_WORDS = ("astro", "astrologer", "pandit", "acharya", "guru", "guruji", "dr", "tarot", "vedic")
@@ -83,15 +88,14 @@ CONNECT_LABELS = {
 
 
 def _with_eta(astrologer: dict) -> dict:
-    """Available now -> no ETA needed. Anyone else gets a fresh random
-    5-120 minute dummy wait, generated fresh on every call (not stored,
-    not deterministic per astrologer) — intentionally not a real
-    schedule."""
+    """Available now -> no ETA needed. Anyone else also gets None: there's
+    no real schedule data behind this mock roster (see module docstring)
+    and a fabricated number is worse than admitting we don't know —
+    next_available_at=None is already a well-handled case throughout the
+    rest of this app (prompt guidance, tool descriptions), same meaning
+    as redash_client.get_astrologer_availability's own null case."""
     merged = dict(astrologer)
-    if astrologer["availability"] == "Available now":
-        merged["next_available_at"] = None
-    else:
-        merged["next_available_at"] = f"in about {random.randint(5, 120)} minutes"
+    merged["next_available_at"] = None
     return merged
 
 
