@@ -9,20 +9,32 @@ create_ticket pre-fills category/sub-issue/transcript/evidence/LTV tier —
 CS owns all triage/priority/resolution after that, same as the AstroHelp
 pattern; this bot's job stops at "raise a well-formed ticket."
 
-IMPORTANT before flipping ZOHO_MOCK_MODE=false for real: the
-category/sub-issue labels below (_ZOHO_CATEGORY_MAP, _ZOHO_SUB_ISSUE_
-KEYWORDS) and ZOHO_DEPARTMENT_ID are guesses at reasonable values, not
-verified against a live Zoho Desk portal the way AstroHelp's were —
-Zoho enforces strict validation on custom picklist fields (AstroHelp hit
-this directly: a ticket missing/mismatching a required field fails to
-even save). Check these against your actual Zoho Desk Category/Sub Issue
-picklists before going live, and don't reuse AstroHelp's own
-ZOHO_DEPARTMENT_ID as-is — that's its astrologer-support queue; visitor
-tickets from this bot belong in a separate department/queue, or they'll
-land mixed in with astrologer complaints. Same caveat applies to
-create_ticket's customFields keys (cf_user_id, cf_ltv_tier) — those API
-names must match custom fields that actually exist on the portal's
-ticket layout, or Zoho rejects the whole request.
+_ZOHO_CATEGORY_MAP below is now verified against the real "Astro Lokal"
+Desk portal (department 271863000000010772's ticket layout, id
+271863000000011350, pulled live via GET /api/v1/layouts/<id>) — every
+value is one of the real Category field's 15 allowed picklist values.
+
+cf_sub_issue (the real "Sub Issue Category" field) is a MANDATORY
+picklist with its own fixed 54-value list, verified the same way — but
+this bot's own `sub_category` argument is free-form model-generated text
+(see agent/tool_schemas.py's CREATE_SUPPORT_TICKET — no enum), which can
+never reliably match one of those exact 54 strings. Rather than risk an
+INVALID_DATA rejection on every ticket, create_ticket sends a fixed,
+always-valid placeholder ("General Inquiry") for cf_sub_issue just to
+satisfy the mandatory-field requirement, and keeps the model's actual
+free-text sub-category where a human reads it (the subject line and
+description) instead of trying to force it into that picklist.
+
+cf_user_id / cf_ltv_tier do NOT exist as custom fields on the real
+layout at all (confirmed from the same layout pull — there's no field
+with either of those purposes defined). create_ticket deliberately does
+NOT send them in customFields: an unrecognized custom field key can
+either be silently dropped or cause a validation error depending on
+Zoho's mood, and either way nothing is gained by sending it. That
+information still reaches CS via contact.lastName (user_id) and the
+subject line (ltv_tier) below. If/when real custom fields are created
+for these in Zoho Desk, add their actual apiName back into customFields
+here.
 """
 import logging
 import os
@@ -43,22 +55,33 @@ ZOHO_ORG_ID = os.environ.get('ZOHO_ORG_ID', '')
 ZOHO_DEPARTMENT_ID = os.environ.get('ZOHO_DEPARTMENT_ID', '')
 
 # This app's own categories (see agent/tool_schemas.py's CREATE_SUPPORT_
-# TICKET) mapped to placeholder Zoho Category picklist labels — adjust to
-# match your real portal, same caveat as the module docstring above.
+# TICKET) mapped to real Zoho Category picklist labels — verified against
+# the live "Astro Lokal" ticket layout's actual 15 allowed values (see
+# module docstring). Every value on the right must be one of: App
+# Features, App Guidance, Astrologer Queries, Low Visibility, Onboarding,
+# Payment Queries, Refund Request, Profile changes, Tech Issues, User
+# Queries, Withdrawal / KYC, Incomplete Query, Promotional Query,
+# Transactional Query, Internal Testing.
 _ZOHO_CATEGORY_MAP = {
     "payment": "Payment Queries",
     "refund": "Refund Request",
-    "account": "App Features",
-    "astrologer_queue": "User Queries",
+    "account": "Profile changes",
+    "astrologer_queue": "Astrologer Queries",
     "billing_dispute": "Payment Queries",
-    "quality_complaint": "Trust / Quality Concern",
+    "quality_complaint": "User Queries",
     "feature_request": "App Features",
     "technical": "Tech Issues",
     "language_change": "App Features",
     "report": "User Queries",
-    "escalation": "Escalation Request",
+    "escalation": "User Queries",
 }
 _DEFAULT_ZOHO_CATEGORY = "User Queries"
+
+# The real cf_sub_issue field (see module docstring) is a mandatory
+# picklist with its own fixed list this bot's free-text sub_category
+# can't reliably match — this exact string is one of its 54 real allowed
+# values, used purely to satisfy the mandatory-field requirement.
+_ZOHO_SUB_ISSUE_PLACEHOLDER = "General Inquiry"
 
 _MOCK_TICKETS_BY_USER: dict = {}
 
@@ -125,17 +148,15 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
             # needed for its own chatbot-raised tickets).
             "channel": "Chat",
             "contact": {"lastName": f"AstroLokal visitor {user_id}"},
-            # Structured, not just embedded in the subject/contact name
-            # above, so CS can actually filter/search on these in Zoho
-            # rather than parsing free text — cf_user_id/cf_ltv_tier are
-            # placeholder custom-field API names, same "verify against
-            # your real Zoho Desk portal first" caveat as the module
-            # docstring's category-map warning: these fields must exist
-            # on the portal's ticket layout before a real (non-mock) call
-            # will succeed.
+            # cf_sub_issue is mandatory on the real layout but has no
+            # field matching this bot's own free-text sub_category (see
+            # module docstring) — just satisfies that requirement.
+            # cf_user_id/cf_ltv_tier are deliberately NOT sent here: no
+            # such custom fields exist on the real layout (see docstring);
+            # that info already reaches CS via contact.lastName and the
+            # subject line below instead.
             "customFields": {
-                "cf_user_id": user_id,
-                "cf_ltv_tier": ltv_tier or "unranked",
+                "cf_sub_issue": _ZOHO_SUB_ISSUE_PLACEHOLDER,
             },
         }
         if evidence_url:
