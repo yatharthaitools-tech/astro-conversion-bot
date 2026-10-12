@@ -55,7 +55,7 @@
             {% endfor %}
           </form>
         </td>
-        <td>{{ u.created_at[:10] }}</td>
+        <td>{{ u.created_at | ist('%Y-%m-%d') }}</td>
         <td>
           <form method="post" action="{{ url_for('dashboard.delete_user', user_id=u.id) }}"
                 onsubmit="return confirm('Remove ' + {{ u.email|tojson }} + '?');">

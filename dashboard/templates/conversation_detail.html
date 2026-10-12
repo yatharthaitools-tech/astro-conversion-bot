@@ -13,8 +13,8 @@
     <div><span class="label">User</span><span class="mono">{{ conversation.user_id }}</span></div>
     <div><span class="label">Turns</span>{{ conversation.turn_count }}</div>
     <div><span class="label">Language</span>{{ conversation.last_language or '—' }}</div>
-    <div><span class="label">First seen</span>{{ conversation.first_seen_at[:19].replace('T', ' ') }}</div>
-    <div><span class="label">Last seen</span>{{ conversation.last_seen_at[:19].replace('T', ' ') }}</div>
+    <div><span class="label">First seen</span>{{ conversation.first_seen_at | ist('%Y-%m-%d %H:%M:%S') }}</div>
+    <div><span class="label">Last seen</span>{{ conversation.last_seen_at | ist('%Y-%m-%d %H:%M:%S') }}</div>
   </div>
 
   <div class="transcript">

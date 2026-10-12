@@ -27,7 +27,7 @@
             <div class="history-row">
               <span class="status-pill status-{{ h.status|lower|replace(' ', '-') }}">{{ h.status }}</span>
               <span class="history-note">{{ h.note or '' }}</span>
-              <span class="history-time">{{ h.changed_at[:16].replace('T', ' ') }}</span>
+              <span class="history-time">{{ h.changed_at | ist }}</span>
             </div>
           {% endfor %}
         </div>
@@ -40,7 +40,7 @@
           {% for r in replies %}
             <div class="history-row">
               <span class="history-note">{{ r.text }}</span>
-              <span class="history-time">{{ r.created_at[:16].replace('T', ' ') }}</span>
+              <span class="history-time">{{ r.created_at | ist }}</span>
             </div>
           {% else %}
             <p class="empty-state">No replies sent yet.</p>
@@ -80,9 +80,9 @@
         {% if ticket.zoho_ticket_id %}
         <div class="side-field"><span class="label">Zoho ticket</span><span class="mono">{{ ticket.zoho_ticket_id }}</span></div>
         {% endif %}
-        <div class="side-field"><span class="label">Created</span>{{ ticket.created_at[:19].replace('T', ' ') }}</div>
+        <div class="side-field"><span class="label">Created</span>{{ ticket.created_at | ist('%Y-%m-%d %H:%M:%S') }}</div>
         {% if ticket.resolved_at %}
-        <div class="side-field"><span class="label">Resolved</span>{{ ticket.resolved_at[:19].replace('T', ' ') }}</div>
+        <div class="side-field"><span class="label">Resolved</span>{{ ticket.resolved_at | ist('%Y-%m-%d %H:%M:%S') }}</div>
         {% endif %}
         {% if ticket.session_id %}
         <div class="side-field">

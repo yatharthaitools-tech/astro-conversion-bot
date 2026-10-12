@@ -17,6 +17,7 @@ role that can't act doesn't even see the control).
 import csv
 import io
 import re
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, Response, redirect, render_template, request, url_for
 
@@ -26,6 +27,28 @@ from services import ticket_service
 bp = Blueprint('dashboard', __name__, url_prefix='/admin', template_folder='templates')
 
 PAGE_SIZE = 25
+
+# Every timestamp column in Postgres is stored as UTC (dashboard/db.py's
+# _now()) — the admin dashboard is read by AstroLokal's own India-based
+# team, who expect IST, not UTC wall-clock time truncated to look like
+# local time (the old `x[:16].replace('T', ' ')` pattern every template
+# used did exactly that: it dropped the UTC offset and printed the raw
+# UTC digits as if they were already local).
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+@bp.app_template_filter('ist')
+def format_ist(value, fmt='%Y-%m-%d %H:%M'):
+    """Converts an ISO-8601 UTC timestamp string (as dashboard/db.py's
+    _to_dict produces for every *_at column) to IST for display. Used in
+    place of the old raw string-slicing in every template that shows an
+    absolute timestamp."""
+    if not value:
+        return ''
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(IST).strftime(fmt)
 
 # Mirrors app.py's own _ATTACHMENT_MARKER_RE — the visitor-facing chat
 # widget (static/script.js's appendImageMessage) already renders the

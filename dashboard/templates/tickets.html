@@ -83,7 +83,7 @@
           <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'"><span class="status-pill status-{{ t.status|lower|replace(' ', '-') }}">{{ t.status }}</span></td>
           <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ language_codes.get(t.language, t.language or '—') }}</td>
           <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.assigned_admin_email or '—' }}</td>
-          <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.created_at[:16].replace('T', ' ') }}</td>
+          <td onclick="window.location='{{ url_for('dashboard.ticket_detail', ticket_id=t.id) }}'">{{ t.created_at | ist }}</td>
         </tr>
         {% else %}
         <tr><td colspan="9" class="empty-state">No tickets yet.</td></tr>
