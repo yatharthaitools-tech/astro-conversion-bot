@@ -229,6 +229,20 @@ h2 { font-size: 0.82rem; margin: 0 0 14px; color: var(--ink-soft); text-transfor
 .admin-table tbody tr:last-child td { border-bottom: none; }
 .admin-table tbody tr[onclick] { cursor: pointer; transition: background 0.12s ease; }
 .admin-table tbody tr[onclick]:hover { background: rgba(232, 83, 47, 0.045); }
+/* A persistent chevron, not just the hover highlight above — a row
+   that navigates somewhere should look clickable before the pointer
+   ever reaches it, not only once hovered. */
+.admin-table tbody tr[onclick] td:last-child { position: relative; padding-right: 30px; }
+.admin-table tbody tr[onclick] td:last-child::after {
+  content: '\203A';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
 .empty-state { text-align: center; color: var(--ink-faint); padding: 32px !important; font-size: 0.88rem; }
 
 .pagination { display: flex; gap: 6px; margin-top: 16px; }
