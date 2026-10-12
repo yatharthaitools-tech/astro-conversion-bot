@@ -71,48 +71,6 @@
 
 <div class="panel-grid">
   <div class="panel panel-wide">
-    <h2>Conversations started — D0D / W0W / M0M</h2>
-    <div class="kpi-grid">
-      {{ period_card('Today', stats.conversations_period.today, stats.conversations_period.dod_pct, 'yesterday', stats.conversations_period.yesterday) }}
-      {{ period_card('This week', stats.conversations_period.this_week, stats.conversations_period.wow_pct, 'last week', stats.conversations_period.last_week) }}
-      {{ period_card('This month', stats.conversations_period.this_month, stats.conversations_period.mom_pct, 'last month', stats.conversations_period.last_month) }}
-    </div>
-  </div>
-
-  <div class="panel panel-wide">
-    <h2>All tracked taps — D0D / W0W / M0M</h2>
-    <div class="kpi-grid">
-      {{ period_card('Today', events.overall.today, events.overall.dod_pct, 'yesterday', events.overall.yesterday) }}
-      {{ period_card('This week', events.overall.this_week, events.overall.wow_pct, 'last week', events.overall.last_week) }}
-      {{ period_card('This month', events.overall.this_month, events.overall.mom_pct, 'last month', events.overall.last_month) }}
-    </div>
-  </div>
-
-  <div class="panel panel-wide">
-    <h2>Events by type</h2>
-    <p class="ticket-subline">Quick-reply taps, close/send/upload/connect-card taps, ratings given — each row's deltas are that event type's own D0D/W0W/M0M.</p>
-    <table class="admin-table">
-      <thead><tr><th>Event</th><th>Total</th><th>Today (D0D)</th><th>This week (W0W)</th><th>This month (M0M)</th></tr></thead>
-      <tbody>
-        {% for row in events.event_totals %}
-        {% set t = events.by_type[row.event_type] %}
-        <tr>
-          <td class="mono">{{ row.event_type }}</td>
-          <td>{{ row.count }}</td>
-          <td>{{ delta_cell(t.today, t.dod_pct) }}</td>
-          <td>{{ delta_cell(t.this_week, t.wow_pct) }}</td>
-          <td>{{ delta_cell(t.this_month, t.mom_pct) }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="empty-state">No events logged yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="panel-grid">
-  <div class="panel panel-wide">
     <h2>Conversations — week by week</h2>
     {% if stats.conversation_trend.weekly %}
       <div class="chart-wrap"><canvas id="convTrendChart"></canvas></div>
@@ -168,7 +126,51 @@
       <p class="empty-state">No data yet.</p>
     {% endif %}
   </div>
+</div>
 
+<div class="panel-grid">
+  <div class="panel panel-wide">
+    <h2>Conversations started — D0D / W0W / M0M</h2>
+    <div class="kpi-grid">
+      {{ period_card('Today', stats.conversations_period.today, stats.conversations_period.dod_pct, 'yesterday', stats.conversations_period.yesterday) }}
+      {{ period_card('This week', stats.conversations_period.this_week, stats.conversations_period.wow_pct, 'last week', stats.conversations_period.last_week) }}
+      {{ period_card('This month', stats.conversations_period.this_month, stats.conversations_period.mom_pct, 'last month', stats.conversations_period.last_month) }}
+    </div>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>All tracked taps — D0D / W0W / M0M</h2>
+    <div class="kpi-grid">
+      {{ period_card('Today', events.overall.today, events.overall.dod_pct, 'yesterday', events.overall.yesterday) }}
+      {{ period_card('This week', events.overall.this_week, events.overall.wow_pct, 'last week', events.overall.last_week) }}
+      {{ period_card('This month', events.overall.this_month, events.overall.mom_pct, 'last month', events.overall.last_month) }}
+    </div>
+  </div>
+
+  <div class="panel panel-wide">
+    <h2>Events by type</h2>
+    <p class="ticket-subline">Quick-reply taps, close/send/upload/connect-card taps, ratings given — each row's deltas are that event type's own D0D/W0W/M0M.</p>
+    <table class="admin-table">
+      <thead><tr><th>Event</th><th>Total</th><th>Today (D0D)</th><th>This week (W0W)</th><th>This month (M0M)</th></tr></thead>
+      <tbody>
+        {% for row in events.event_totals %}
+        {% set t = events.by_type[row.event_type] %}
+        <tr>
+          <td class="mono">{{ row.event_type }}</td>
+          <td>{{ row.count }}</td>
+          <td>{{ delta_cell(t.today, t.dod_pct) }}</td>
+          <td>{{ delta_cell(t.this_week, t.wow_pct) }}</td>
+          <td>{{ delta_cell(t.this_month, t.mom_pct) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-state">No events logged yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel-grid">
   <div class="panel panel-wide">
     <h2>LTV-wise analysis</h2>
     <p class="ticket-subline">Does engagement/resolution actually differ by how much a visitor has spent? "Card tap-through" is the same honest metric as the KPI above — not a true conversion rate.</p>
