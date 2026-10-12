@@ -67,9 +67,15 @@ def test_round_robin_falls_back_to_anyone_when_no_language_match():
 
 
 def test_round_robin_with_no_language_ignores_language_field():
-    admin = _make_user("admin@x.com", "admin")
+    agent = _make_user("agent@x.com", "support_agent")
     t1 = _make_ticket("u1", language=None)
-    assert t1["assigned_admin_id"] == admin["id"]
+    assert t1["assigned_admin_id"] == agent["id"]
+
+
+def test_round_robin_never_assigns_an_admin():
+    _make_user("admin@x.com", "admin")  # eligible to MANAGE, never auto-assigned
+    t1 = _make_ticket("u1", language=None)
+    assert t1["assigned_admin_id"] is None
 
 
 # --- #4: bulk reassignment -------------------------------------------------

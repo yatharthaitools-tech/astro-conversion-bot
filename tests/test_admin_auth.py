@@ -192,9 +192,10 @@ def test_analyst_cannot_update_ticket_status(client):
 
 # --- round-robin ticket assignment -----------------------------------
 
-def test_ticket_auto_assigns_round_robin_across_admin_and_support_agent_only():
+def test_ticket_auto_assigns_round_robin_across_support_agents_only():
     admin = _make_user("admin@astrolokal.com", "adminpass123", "admin")
-    agent = _make_user("agent@astrolokal.com", "agentpass123", "support_agent")
+    agent1 = _make_user("agent1@astrolokal.com", "agentpass123", "support_agent")
+    agent2 = _make_user("agent2@astrolokal.com", "agentpass123", "support_agent")
     _make_user("analyst@astrolokal.com", "analystpass1", "analyst")  # never eligible
 
     for i in range(4):
@@ -203,10 +204,22 @@ def test_ticket_auto_assigns_round_robin_across_admin_and_support_agent_only():
 
     tickets = dashboard_db.list_tickets(limit=10)
     assignees = {t["assigned_admin_id"] for t in tickets}
-    assert assignees == {admin["id"], agent["id"]}, assignees
+    # Admin is eligible to MANAGE any ticket, but never auto-assigned one —
+    # only support_agent accounts are in the round-robin rotation.
+    assert admin["id"] not in assignees
+    assert assignees == {agent1["id"], agent2["id"]}, assignees
     # True round robin, not random: assignment alternates in creation order.
     ordered = sorted(tickets, key=lambda t: t["created_at"])
-    assert [t["assigned_admin_id"] for t in ordered] == [admin["id"], agent["id"], admin["id"], agent["id"]]
+    assert [t["assigned_admin_id"] for t in ordered] == [agent1["id"], agent2["id"], agent1["id"], agent2["id"]]
+
+
+def test_admin_is_not_in_assignable_admins_list():
+    admin = _make_user("admin@astrolokal.com", "adminpass123", "admin")
+    agent = _make_user("agent@astrolokal.com", "agentpass123", "support_agent")
+
+    assignable_ids = {a["id"] for a in dashboard_db.list_assignable_admins()}
+    assert admin["id"] not in assignable_ids
+    assert agent["id"] in assignable_ids
 
 
 def test_ticket_left_unassigned_when_nobody_eligible():
@@ -219,11 +232,11 @@ def test_ticket_left_unassigned_when_nobody_eligible():
 
 
 def test_manual_reassignment_overrides_round_robin():
-    admin = _make_user("admin@astrolokal.com", "adminpass123", "admin")
+    agent = _make_user("agent@astrolokal.com", "agentpass123", "support_agent")
     dashboard_db.ensure_conversation("sess-1", "user-1")
     dashboard_db.record_ticket("AST-T1", "sess-1", "user-1", "technical", "x", "d", None, "mid")
     ticket = dashboard_db.list_tickets(limit=1)[0]
-    assert ticket["assigned_admin_id"] == admin["id"]
+    assert ticket["assigned_admin_id"] == agent["id"]
 
     assert dashboard_db.update_ticket_assignee(ticket["id"], None) is True
     assert dashboard_db.get_ticket(ticket["id"])["assigned_admin_id"] is None

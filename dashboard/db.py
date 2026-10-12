@@ -455,14 +455,16 @@ def get_conversation(session_id: str) -> dict:
 # --- Tickets -----------------------------------------------------------
 
 def _pick_round_robin_assignee(cur, language: str = None) -> int:
-    """Whoever can actually work a ticket (admin or support_agent) AND has
-    gone longest without a new one — a teammate with zero tickets yet
-    (NULL last-assigned) always comes before anyone with a real history,
-    so a newly-added agent gets pulled into rotation immediately instead
-    of starting at the back of the line. Returns None if there's nobody
-    eligible yet (e.g. a fresh install with only an analyst so far) —
+    """Only a support_agent — never admin, never analyst — AND has gone
+    longest without a new one — a teammate with zero tickets yet (NULL
+    last-assigned) always comes before anyone with a real history, so a
+    newly-added agent gets pulled into rotation immediately instead of
+    starting at the back of the line. Returns None if there's nobody
+    eligible yet (e.g. a fresh install with no support agents added yet) —
     callers leave assigned_admin_id NULL in that case, same as an
-    unassigned ticket always looked before this existed.
+    unassigned ticket always looked before this existed. Admins can still
+    see/manage any ticket (see dashboard/routes.py's role checks) — they
+    just never get tickets routed to them automatically.
 
     language (one of dashboard.db.LANGUAGE_CODES, e.g. 'hi') prefers
     whoever has that language in admin_users.languages over anyone who
@@ -480,7 +482,7 @@ def _pick_round_robin_assignee(cur, language: str = None) -> int:
                FROM tickets WHERE assigned_admin_id IS NOT NULL
                GROUP BY assigned_admin_id
            ) t ON t.assigned_admin_id = au.id
-           WHERE au.role IN ('admin', 'support_agent')
+           WHERE au.role = 'support_agent'
            ORDER BY
                CASE WHEN %(language)s IS NOT NULL AND %(language)s = ANY(au.languages) THEN 0 ELSE 1 END,
                t.last_assigned ASC NULLS FIRST,
@@ -1232,13 +1234,13 @@ def list_admin_users() -> list:
 
 
 def list_assignable_admins() -> list:
-    """Who a ticket can actually be assigned to — the same eligibility
-    _pick_round_robin_assignee uses, for the tickets filter dropdown and
-    the ticket detail reassignment form."""
+    """Who a ticket can actually be assigned to — support_agent only, same
+    eligibility _pick_round_robin_assignee uses, for the tickets filter
+    dropdown and the ticket detail reassignment form."""
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM admin_users WHERE role IN ('admin', 'support_agent') ORDER BY email ASC"
+                "SELECT * FROM admin_users WHERE role = 'support_agent' ORDER BY email ASC"
             )
             return [_to_dict(r) for r in cur.fetchall()]
 
