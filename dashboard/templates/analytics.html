@@ -33,11 +33,11 @@
 <div class="kpi-grid">
   <div class="kpi-card">
     <div class="kpi-value">{{ stats.resolved_by_bot }}</div>
-    <div class="kpi-label">resolved by bot</div>
+    <div class="kpi-label" title="Conversations, not tickets — every conversation in this window counts here unless it raised at least one ticket.">resolved by bot</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-value">{{ stats.resolved_by_escalation }}</div>
-    <div class="kpi-label">escalated to a ticket</div>
+    <div class="kpi-value">{{ stats.total_tickets }}</div>
+    <div class="kpi-label" title="Ticket rows raised in this filtered window — not the same as the conversation count: one conversation can raise more than one ticket.">tickets raised</div>
   </div>
   <div class="kpi-card">
     <div class="kpi-value">{{ stats.avg_rating if stats.avg_rating is not none else '—' }}</div>
@@ -96,15 +96,6 @@
       </div>
     {% else %}
       <p class="empty-state">No tickets yet.</p>
-    {% endif %}
-  </div>
-
-  <div class="panel">
-    <h2>Reply source</h2>
-    {% if stats.source_breakdown %}
-      <div class="chart-wrap chart-wrap-donut"><canvas id="sourceChart"></canvas></div>
-    {% else %}
-      <p class="empty-state">No data yet.</p>
     {% endif %}
   </div>
 
@@ -215,7 +206,7 @@
 {% endblock %}
 
 {% block scripts %}
-{% if stats.conversation_trend.weekly or stats.ticket_trend.weekly or stats.ticket_categories or stats.source_breakdown or stats.language_breakdown %}
+{% if stats.conversation_trend.weekly or stats.ticket_trend.weekly or stats.ticket_categories or stats.language_breakdown %}
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script>
 (function () {
@@ -310,7 +301,6 @@
     });
   }
 
-  donutChart('sourceChart', {{ stats.source_breakdown | tojson }}, 'source');
   donutChart('languageChart', {{ stats.language_breakdown | tojson }}, 'language');
   donutChart(
     'ltvChart',
