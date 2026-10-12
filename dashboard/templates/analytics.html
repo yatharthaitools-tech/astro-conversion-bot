@@ -53,7 +53,7 @@
   </div>
   <div class="kpi-card">
     <div class="kpi-value">{{ stats.pct_card_tap_through }}%</div>
-    <div class="kpi-label" title="Of chats where the recommend card was shown, the share that tapped Chat or Call. Not a true conversion rate — there's no signal back from the app on whether a tap led to an actual consultation.">card tap-through{% if stats.card_shown_sessions %} &middot; {{ stats.card_tapped_sessions }}/{{ stats.card_shown_sessions }}{% endif %}</div>
+    <div class="kpi-label" title="Of chats where the recommend card was shown, the share that tapped Chat or Call. Not a true conversion rate — there's no signal back from the app on whether a tap led to an actual consultation.">recommended clicked{% if stats.card_shown_sessions %} &middot; {{ stats.card_tapped_sessions }}/{{ stats.card_shown_sessions }}{% endif %}</div>
   </div>
   <div class="kpi-card">
     <div class="kpi-value">{{ stats.avg_duration_label }}</div>
@@ -71,8 +71,8 @@
 
 <div class="panel-grid">
   <div class="panel panel-wide">
-    <h2>Conversations — week by week</h2>
-    {% if stats.conversation_trend.weekly %}
+    <h2>Conversations — day by day</h2>
+    {% if stats.conversation_trend.daily %}
       <div class="chart-wrap"><canvas id="convTrendChart"></canvas></div>
     {% else %}
       <p class="empty-state">No data yet.</p>
@@ -80,8 +80,8 @@
   </div>
 
   <div class="panel panel-wide">
-    <h2>Tickets — week by week</h2>
-    {% if stats.ticket_trend.weekly %}
+    <h2>Tickets — day by day</h2>
+    {% if stats.ticket_trend.daily %}
       <div class="chart-wrap"><canvas id="ticketTrendChart"></canvas></div>
     {% else %}
       <p class="empty-state">No tickets yet.</p>
@@ -164,9 +164,9 @@
 <div class="panel-grid">
   <div class="panel panel-wide">
     <h2>LTV-wise analysis</h2>
-    <p class="ticket-subline">Does engagement/resolution actually differ by how much a visitor has spent? "Card tap-through" is the same honest metric as the KPI above — not a true conversion rate.</p>
+    <p class="ticket-subline">Does engagement/resolution actually differ by how much a visitor has spent? "Recommended clicked" is the same honest metric as the KPI above — not a true conversion rate.</p>
     <table class="admin-table">
-      <thead><tr><th>Tier</th><th>Conversations</th><th>Resolved by bot</th><th>Escalated</th><th>Avg. CSAT</th><th>Card tap-through</th></tr></thead>
+      <thead><tr><th>Tier</th><th>Conversations</th><th>Resolved by bot</th><th>Escalated</th><th>Avg. CSAT</th><th>Recommended clicked</th></tr></thead>
       <tbody>
         {% for row in stats.ltv_breakdown %}
         <tr>
@@ -206,7 +206,7 @@
 {% endblock %}
 
 {% block scripts %}
-{% if stats.conversation_trend.weekly or stats.ticket_trend.weekly or stats.ticket_categories or stats.language_breakdown %}
+{% if stats.conversation_trend.daily or stats.ticket_trend.daily or stats.ticket_categories or stats.language_breakdown %}
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script>
 (function () {
@@ -255,8 +255,8 @@
     });
   }
 
-  lineChart('convTrendChart', {{ stats.conversation_trend.weekly | tojson }}, 'Started', 'Resolved');
-  lineChart('ticketTrendChart', {{ stats.ticket_trend.weekly | tojson }}, 'Raised', 'Resolved');
+  lineChart('convTrendChart', {{ stats.conversation_trend.daily | tojson }}, 'Started', 'Resolved');
+  lineChart('ticketTrendChart', {{ stats.ticket_trend.daily | tojson }}, 'Raised', 'Resolved');
 
   (function () {
     var el = document.getElementById('categoriesChart');

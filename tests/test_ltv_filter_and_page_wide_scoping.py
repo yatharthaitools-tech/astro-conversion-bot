@@ -156,14 +156,14 @@ def test_conversation_and_ticket_trends_respect_ltv_tier_filter():
     dashboard_db.record_ticket("AST-1", "sess-high", "u1", "technical", "x", "d", None, "high")
 
     all_stats = dashboard_db.get_analytics()
-    total_convos_raised = sum(w["raised"] for w in all_stats["conversation_trend"]["weekly"])
-    total_tickets_raised = sum(w["raised"] for w in all_stats["ticket_trend"]["weekly"])
+    total_convos_raised = sum(w["raised"] for w in all_stats["conversation_trend"]["daily"])
+    total_tickets_raised = sum(w["raised"] for w in all_stats["ticket_trend"]["daily"])
     assert total_convos_raised == 2
     assert total_tickets_raised == 1
 
     high_only = dashboard_db.get_analytics(ltv_tier="High")
-    assert sum(w["raised"] for w in high_only["conversation_trend"]["weekly"]) == 1
-    assert sum(w["raised"] for w in high_only["ticket_trend"]["weekly"]) == 1
+    assert sum(w["raised"] for w in high_only["conversation_trend"]["daily"]) == 1
+    assert sum(w["raised"] for w in high_only["ticket_trend"]["daily"]) == 1
 
 
 # --- get_event_analytics: ltv_tier scopes it, date range deliberately not -

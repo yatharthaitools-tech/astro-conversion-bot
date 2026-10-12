@@ -864,22 +864,26 @@ def _format_duration(seconds) -> str:
 
 def _week_month_trend(cur, table: str, date_col: str, resolved_col: str,
                        extra_where: str = "", params: list = None) -> dict:
-    """Shared helper: {'weekly': [...], 'monthly': [...]} of {bucket, raised,
-    resolved} rows for either tickets or conversations, bucketed by ISO
-    year-week / year-month of their creation timestamp. extra_where/params
-    let a caller scope this to the Analytics page's active filters (date
-    range, LTV tier) the same way every other section does — see
-    get_analytics's own comment on why nothing stays silently unfiltered."""
+    """Shared helper: {'daily': [...], 'monthly': [...]} of {bucket, raised,
+    resolved} rows for either tickets or conversations. `daily` is bucketed
+    by exact calendar date (YYYY-MM-DD, last 30 days) — an ISO week number
+    like "2026-W40" isn't something anyone reads directly off a calendar,
+    so the trend charts show real dates on the X axis instead. `monthly`
+    stays YYYY-MM (already a real calendar label, not a bare index).
+    extra_where/params let a caller scope this to the Analytics page's
+    active filters (date range, LTV tier) the same way every other
+    section does — see get_analytics's own comment on why nothing stays
+    silently unfiltered."""
     params = list(params or [])
     where = f"WHERE {extra_where}" if extra_where else ""
     cur.execute(
-        f"""SELECT to_char({date_col}, 'IYYY-"W"IW') AS bucket,
+        f"""SELECT to_char({date_col}, 'YYYY-MM-DD') AS bucket,
                    COUNT(*) AS raised,
                    SUM(CASE WHEN {resolved_col} IS NOT NULL THEN 1 ELSE 0 END) AS resolved
-            FROM {table} {where} GROUP BY bucket ORDER BY bucket DESC LIMIT 8""",
+            FROM {table} {where} GROUP BY bucket ORDER BY bucket DESC LIMIT 30""",
         params,
     )
-    weekly = cur.fetchall()
+    daily = cur.fetchall()
     cur.execute(
         f"""SELECT to_char({date_col}, 'YYYY-MM') AS bucket,
                    COUNT(*) AS raised,
@@ -889,7 +893,7 @@ def _week_month_trend(cur, table: str, date_col: str, resolved_col: str,
     )
     monthly = cur.fetchall()
     return {
-        'weekly': [dict(r) for r in reversed(weekly)],
+        'daily': [dict(r) for r in reversed(daily)],
         'monthly': [dict(r) for r in reversed(monthly)],
     }
 
