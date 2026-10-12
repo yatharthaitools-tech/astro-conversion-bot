@@ -144,10 +144,12 @@ def conversation_detail(session_id):
 def analytics():
     date_from = request.args.get('from') or None
     date_to = request.args.get('to') or None
-    stats = db.get_analytics(date_from=date_from, date_to=date_to)
-    events = db.get_event_analytics()
+    ltv_tier = request.args.get('ltv_tier') or None
+    stats = db.get_analytics(date_from=date_from, date_to=date_to, ltv_tier=ltv_tier)
+    events = db.get_event_analytics(ltv_tier=ltv_tier)
     return render_template(
-        'analytics.html', stats=stats, events=events, filters={'from': date_from or '', 'to': date_to or ''},
+        'analytics.html', stats=stats, events=events, ltv_tier_labels=db.LTV_TIER_LABELS,
+        filters={'from': date_from or '', 'to': date_to or '', 'ltv_tier': ltv_tier or ''},
         show_nav=True, active='analytics',
     )
 

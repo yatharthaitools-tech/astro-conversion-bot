@@ -20,6 +20,12 @@
 <form method="get" class="filter-bar">
   <input type="date" name="from" value="{{ filters.from }}" placeholder="From" />
   <input type="date" name="to" value="{{ filters.to }}" placeholder="To" />
+  <select name="ltv_tier">
+    <option value="" {{ 'selected' if not filters.ltv_tier }}>All LTV tiers</option>
+    {% for tier in ltv_tier_labels %}
+      <option value="{{ tier }}" {{ 'selected' if filters.ltv_tier == tier }}>{{ tier }}</option>
+    {% endfor %}
+  </select>
   <button type="submit">Filter</button>
   <a href="{{ url_for('dashboard.analytics') }}" class="filter-clear">Clear</a>
 </form>

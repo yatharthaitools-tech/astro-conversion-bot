@@ -221,6 +221,23 @@ _MIGRATIONS = [
 # Hinglish/Marathi/Bengali aren't part of this routing requirement).
 LANGUAGE_CODES = {'hi': 'Hindi', 'ta': 'Tamil', 'te': 'Telugu', 'ml': 'Malayalam'}
 
+# The Analytics page's LTV-tier filter — same exclusive buckets/labels as
+# get_analytics()'s own ltv_breakdown CASE expression (kept in sync with
+# it by hand; a change to one must mirror in the other). Each condition
+# is written against a bare `ltv` column, valid wherever the query's FROM
+# is literally `conversations` (or aliased `c`) — callers against a
+# table without its own ltv column (messages, tickets, events) wrap this
+# in a `session_id IN (SELECT session_id FROM conversations WHERE ...)`
+# subquery instead; see get_analytics/get_event_analytics.
+LTV_TIER_LABELS = ['Unknown', 'New/Unpaid', 'New-Low', 'Mid', 'High']
+_LTV_TIER_CONDITIONS = {
+    'Unknown': 'ltv IS NULL',
+    'New/Unpaid': 'ltv IS NOT NULL AND ltv <= 0',
+    'New-Low': 'ltv > 0 AND ltv < 200',
+    'Mid': 'ltv >= 200 AND ltv < 1000',
+    'High': 'ltv >= 1000',
+}
+
 
 @contextmanager
 def _connect():
@@ -845,22 +862,30 @@ def _format_duration(seconds) -> str:
     return f"{minutes}m {secs}s"
 
 
-def _week_month_trend(cur, table: str, date_col: str, resolved_col: str) -> dict:
+def _week_month_trend(cur, table: str, date_col: str, resolved_col: str,
+                       extra_where: str = "", params: list = None) -> dict:
     """Shared helper: {'weekly': [...], 'monthly': [...]} of {bucket, raised,
     resolved} rows for either tickets or conversations, bucketed by ISO
-    year-week / year-month of their creation timestamp."""
+    year-week / year-month of their creation timestamp. extra_where/params
+    let a caller scope this to the Analytics page's active filters (date
+    range, LTV tier) the same way every other section does — see
+    get_analytics's own comment on why nothing stays silently unfiltered."""
+    params = list(params or [])
+    where = f"WHERE {extra_where}" if extra_where else ""
     cur.execute(
         f"""SELECT to_char({date_col}, 'IYYY-"W"IW') AS bucket,
                    COUNT(*) AS raised,
                    SUM(CASE WHEN {resolved_col} IS NOT NULL THEN 1 ELSE 0 END) AS resolved
-            FROM {table} GROUP BY bucket ORDER BY bucket DESC LIMIT 8"""
+            FROM {table} {where} GROUP BY bucket ORDER BY bucket DESC LIMIT 8""",
+        params,
     )
     weekly = cur.fetchall()
     cur.execute(
         f"""SELECT to_char({date_col}, 'YYYY-MM') AS bucket,
                    COUNT(*) AS raised,
                    SUM(CASE WHEN {resolved_col} IS NOT NULL THEN 1 ELSE 0 END) AS resolved
-            FROM {table} GROUP BY bucket ORDER BY bucket DESC LIMIT 6"""
+            FROM {table} {where} GROUP BY bucket ORDER BY bucket DESC LIMIT 6""",
+        params,
     )
     monthly = cur.fetchall()
     return {
@@ -908,28 +933,44 @@ def _period_over_period(cur, table: str, date_col: str, extra_where: str = "", p
     }
 
 
-def get_event_analytics() -> dict:
-    """Per-event-type totals (all-time) plus D0D/W0W/M0M trend numbers for
-    total events and for each event_type actually seen — read by the
-    admin Analytics page's Events section. Deliberately NOT scoped to the
-    page's date-range filter like get_analytics()'s other sections: D0D/
-    W0W/M0M is inherently "vs right now", not a fixed window someone
-    picked."""
+def get_event_analytics(ltv_tier: str = None) -> dict:
+    """Per-event-type totals plus D0D/W0W/M0M trend numbers for total
+    events and for each event_type actually seen — read by the admin
+    Analytics page's Events section.
+
+    ltv_tier (a segment filter) DOES scope every number here when set —
+    events has no ltv of its own, so it's a session_id join back to
+    conversations.ltv, same tier vocabulary/bucketing get_analytics()
+    uses. The page's date-range filter deliberately does NOT reach here
+    though: D0D/W0W/M0M is inherently "vs right now", a relative
+    comparison, and a fixed past window doesn't have a sensible meaning
+    layered on top of that — unlike ltv_tier, which is a segment, not a
+    time window, and composes with "vs right now" just fine ("this
+    trend, but only for High-LTV visitors")."""
+    tier_condition = _LTV_TIER_CONDITIONS.get(ltv_tier)
+    session_filter = (
+        f"session_id IN (SELECT session_id FROM conversations WHERE {tier_condition})"
+        if tier_condition else ""
+    )
+    totals_where = f"WHERE {session_filter}" if session_filter else ""
+
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT event_type, COUNT(*) AS n FROM events GROUP BY event_type ORDER BY n DESC"
+                f"SELECT event_type, COUNT(*) AS n FROM events {totals_where} "
+                f"GROUP BY event_type ORDER BY n DESC"
             )
             totals = cur.fetchall()
 
-            overall = _period_over_period(cur, 'events', 'created_at')
+            overall = _period_over_period(cur, 'events', 'created_at', session_filter)
 
             by_type = {}
             for row in totals:
                 event_type = row['event_type']
+                type_where = f"{session_filter} AND event_type = %s" if session_filter else "event_type = %s"
                 by_type[event_type] = {
                     'total': row['n'],
-                    **_period_over_period(cur, 'events', 'created_at', 'event_type = %s', [event_type]),
+                    **_period_over_period(cur, 'events', 'created_at', type_where, [event_type]),
                 }
 
     return {
@@ -939,11 +980,29 @@ def get_event_analytics() -> dict:
     }
 
 
-def get_analytics(date_from: str = None, date_to: str = None) -> dict:
+def get_analytics(date_from: str = None, date_to: str = None, ltv_tier: str = None) -> dict:
     """Aggregate KPIs the admin dashboard's Analytics page reads —
     conversation/turn counts, source breakdown, language breakdown,
     tool-call frequency/success rate, CSAT, bot-vs-human resolution, and
-    week/month trend charts for both conversations and tickets."""
+    week/month trend charts for both conversations and tickets.
+
+    date_from/date_to and ltv_tier (one of LTV_TIER_LABELS) are the
+    page's two filters, and EVERY section below is scoped to both when
+    set — a past bug here left some sections (CSAT, ticket categories,
+    week/month trends) silently unfiltered while others respected the
+    date range, so a filtered page looked only partly filtered. clause
+    (messages-based sections) and ticket_clause (tickets-based sections)
+    both carry the combined filter; the two D0D/W0W/M0M trend blocks
+    (conversations_period here, and get_event_analytics entirely) are the
+    one deliberate exception to date_from/date_to — see their own
+    comments — but DO still respect ltv_tier, since a segment filter
+    composes fine with a "vs right now" comparison."""
+    tier_condition = _LTV_TIER_CONDITIONS.get(ltv_tier)
+    tier_session_filter = (
+        f"session_id IN (SELECT session_id FROM conversations WHERE {tier_condition})"
+        if tier_condition else None
+    )
+
     clause = "WHERE 1=1"
     params = []
     if date_from:
@@ -952,6 +1011,39 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
     if date_to:
         clause += " AND created_at <= %s"
         params.append(date_to + "T23:59:59")
+    if tier_session_filter:
+        clause += f" AND {tier_session_filter}"
+
+    # Mirrors `clause` above but for tickets-based sections: tickets has
+    # its own created_at (not messages'), and no ltv column of its own —
+    # same session_id-via-conversations join as tier_session_filter,
+    # just reused here rather than duplicated inline at each call site.
+    ticket_clause = "WHERE 1=1"
+    ticket_params = []
+    if date_from:
+        ticket_clause += " AND created_at >= %s"
+        ticket_params.append(date_from)
+    if date_to:
+        ticket_clause += " AND created_at <= %s"
+        ticket_params.append(date_to + "T23:59:59")
+    if tier_session_filter:
+        ticket_clause += f" AND {tier_session_filter}"
+
+    # Same date range again, but against conversations.first_seen_at (its
+    # own date column, not messages'/tickets' created_at) — for
+    # conversation_trend below, which queries `conversations` directly so
+    # the tier condition is a bare column reference, no session_id join
+    # needed at all.
+    convo_trend_where = "1=1"
+    convo_trend_params = []
+    if date_from:
+        convo_trend_where += " AND first_seen_at >= %s"
+        convo_trend_params.append(date_from)
+    if date_to:
+        convo_trend_where += " AND first_seen_at <= %s"
+        convo_trend_params.append(date_to + "T23:59:59")
+    if tier_condition:
+        convo_trend_where += f" AND {tier_condition}"
 
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -1090,35 +1182,57 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             )
             trace_rows = cur.fetchall()
 
+            # conversations has no `created_at` of its own (clause's date
+            # condition is against messages.created_at) — same session_id-
+            # via-messages subquery the other conversations-table sections
+            # above already use, not clause pasted in directly.
             cur.execute(
-                """SELECT resolved_by, COUNT(*) as n FROM conversations
-                   WHERE resolved_by IS NOT NULL GROUP BY resolved_by"""
+                f"""SELECT resolved_by, COUNT(*) as n FROM conversations
+                    WHERE session_id IN (SELECT DISTINCT session_id FROM messages {clause})
+                    AND resolved_by IS NOT NULL GROUP BY resolved_by""", params
             )
             resolved_by = {r['resolved_by']: r['n'] for r in cur.fetchall()}
 
             cur.execute(
-                "SELECT AVG(rating) as avg_rating, COUNT(rating) as n_rated FROM conversations WHERE rating IS NOT NULL"
+                f"""SELECT AVG(rating) as avg_rating, COUNT(rating) as n_rated FROM conversations
+                    WHERE session_id IN (SELECT DISTINCT session_id FROM messages {clause})
+                    AND rating IS NOT NULL""", params
             )
             rating_row = cur.fetchone()
 
-            cur.execute("SELECT COUNT(*) AS n FROM conversations")
-            total_convos_all_time = cur.fetchone()['n']
-
-            conversations_period = _period_over_period(cur, 'conversations', 'first_seen_at')
+            # conversations_period: ltv_tier scopes this (a segment filter
+            # composes fine with "vs right now"), date_from/date_to
+            # deliberately does not — see get_analytics's own docstring.
+            # Bare tier_condition, not tier_session_filter's subquery
+            # wrapper — this query is already directly against
+            # conversations, which has its own ltv column.
+            conversations_period = _period_over_period(
+                cur, 'conversations', 'first_seen_at', tier_condition or ""
+            )
 
             cur.execute(
-                "SELECT category, COUNT(*) as n FROM tickets GROUP BY category ORDER BY n DESC LIMIT 8"
+                f"SELECT category, COUNT(*) as n FROM tickets {ticket_clause} GROUP BY category ORDER BY n DESC LIMIT 8",
+                ticket_params,
             )
             category_rows = cur.fetchall()
 
-            conversation_trend = _week_month_trend(cur, 'conversations', 'first_seen_at', 'resolved_at')
-            ticket_trend = _week_month_trend(cur, 'tickets', 'created_at', 'resolved_at')
+            conversation_trend = _week_month_trend(
+                cur, 'conversations', 'first_seen_at', 'resolved_at',
+                convo_trend_where, convo_trend_params,
+            )
+            ticket_trend = _week_month_trend(
+                cur, 'tickets', 'created_at', 'resolved_at',
+                ticket_clause[len('WHERE '):], ticket_params,
+            )
 
-            cur.execute("SELECT COUNT(*) AS n FROM tickets WHERE status NOT IN ('Resolved', 'Closed')")
+            cur.execute(
+                f"SELECT COUNT(*) AS n FROM tickets {ticket_clause} AND status NOT IN ('Resolved', 'Closed')",
+                ticket_params,
+            )
             open_tickets = cur.fetchone()['n']
 
-            cur.execute("SELECT COUNT(*) AS n FROM tickets")
-            total_tickets_all_time = cur.fetchone()['n']
+            cur.execute(f"SELECT COUNT(*) AS n FROM tickets {ticket_clause}", ticket_params)
+            total_tickets_in_scope = cur.fetchone()['n']
 
     tool_stats = {}
     for row in trace_rows:
@@ -1132,7 +1246,7 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
             if call.get('ok'):
                 stat['ok'] += 1
 
-    pct_rated = round(100 * rating_row['n_rated'] / total_convos_all_time, 1) if total_convos_all_time else 0.0
+    pct_rated = round(100 * rating_row['n_rated'] / total_conversations, 1) if total_conversations else 0.0
     pct_returning = (
         round(100 * returning_row['returning'] / returning_row['total'], 1) if returning_row['total'] else 0.0
     )
@@ -1184,7 +1298,7 @@ def get_analytics(date_from: str = None, date_to: str = None) -> dict:
         'conversation_trend': conversation_trend,
         'ticket_trend': ticket_trend,
         'open_tickets': open_tickets,
-        'total_tickets': total_tickets_all_time,
+        'total_tickets': total_tickets_in_scope,
         'conversations_period': conversations_period,
     }
 
