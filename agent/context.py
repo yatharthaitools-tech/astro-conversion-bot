@@ -34,6 +34,7 @@ class SessionContext:
     oauth_token: Optional[str] = None  # unverified — see module docstring
     user_name: Optional[str] = None  # only trusted alongside a real identity, see below
     ltv: Optional[float] = None  # ditto — the app's own ₹ lifetime-spend figure, not a Redash query
+    user_language: Optional[str] = None  # the visitor's OWN declared preference (e.g. 'hi'), from a new `language` link param — ditto re: trust. Only used for ticket round-robin routing (agent/tool_registry.py's create_support_ticket handler), never for which language the bot replies in — that stays `language` above, detected fresh per message.
     last_attachment_url: Optional[str] = None
     has_prior_reply: bool = False
     trace: list = field(default_factory=list)
@@ -76,6 +77,17 @@ def _user_name_from(payload: dict):
     return raw
 
 
+def _user_language_from(payload: dict):
+    """The visitor's own declared language, from a new `language` link
+    param (see app.py's / route and static/script.js's appUserLanguage).
+    Not validated against dashboard.db.LANGUAGE_CODES here on purpose —
+    an unsupported/unknown code just never matches any support agent's
+    own languages list in _pick_round_robin_assignee's SQL, the exact
+    same no-op degradation the no-preference case already has."""
+    raw = str((payload or {}).get("user_language") or "").strip().lower()
+    return raw or None
+
+
 def resolve_session(payload: dict, session_id: str, language: str, history: list) -> SessionContext:
     """Resolves the identity for this request — the real app-supplied
     user_id when present (see module docstring for what "real" doesn't
@@ -90,9 +102,11 @@ def resolve_session(payload: dict, session_id: str, language: str, history: list
     user_id = real_user_id or ("u_" + hashlib.sha256(session_id.encode()).hexdigest()[:12])
     user_name = None
     ltv = None
+    user_language = None
     if real_user_id:
         user_name = _user_name_from(payload)
         ltv = _ltv_from(payload)
+        user_language = _user_language_from(payload)
     has_prior_reply = any(
         (turn.get("sender") or turn.get("role")) == "bot" for turn in (history or [])
     )
@@ -103,5 +117,6 @@ def resolve_session(payload: dict, session_id: str, language: str, history: list
         oauth_token=oauth_token,
         user_name=user_name,
         ltv=ltv,
+        user_language=user_language,
         has_prior_reply=has_prior_reply,
     )

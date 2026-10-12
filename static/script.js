@@ -159,6 +159,11 @@ const appUserId = document.body.dataset.userId || '';
 const appOauthToken = document.body.dataset.oauthToken || '';
 const appUserName = document.body.dataset.userName || '';
 const appLtv = document.body.dataset.ltv || '';
+// The user's own declared language preference (e.g. 'hi') — only used
+// backend-side for ticket round-robin routing (see agent/context.py's
+// resolve_session), never for picking which language the bot replies
+// in — that's still per-message auto-detection, unaffected by this.
+const appUserLanguage = document.body.dataset.userLanguage || '';
 
 // Same identity trust rule as agent/context.py's resolve_session(): a
 // name is usable whenever it rode along with a real user_id — two real
@@ -404,6 +409,7 @@ async function sendToBot(text) {
           oauth_token: appOauthToken,
           user_name: appUserName,
           ltv: appLtv,
+          user_language: appUserLanguage,
         })
       }),
       minDelay

@@ -168,9 +168,17 @@ def _handle_create_support_ticket(safe_input, ctx):
     if not category or not sub_category or not description:
         return {"error": "category, sub_category, and description are required"}
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
+    # Prefer the visitor's OWN declared language (from the link, see
+    # agent/context.py's SessionContext.user_language) for ROUTING this
+    # ticket to the right support agent — more reliable than this one
+    # message's auto-detected script, which just picks reply language and
+    # can be wrong (e.g. they typed this message in English but actually
+    # prefer Hindi support). Falls back to the per-message detection when
+    # no declared preference came through the link.
+    routing_language = ctx.user_language or ctx.language
     ticket = ticket_service.create_ticket(
         ctx.user_id, category, sub_category, description, evidence_url,
-        session_id=ctx.session_id, language=ctx.language, ltv=ctx.ltv,
+        session_id=ctx.session_id, language=routing_language, ltv=ctx.ltv,
     )
     ctx.ticket_raised = True
     return {"ok": True, "ticket_id": ticket["ticket_id"], "status": ticket["status"]}

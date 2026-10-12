@@ -390,6 +390,16 @@ def home():
         oauth_token=request.args.get('oauth_token', ''),
         user_name=user_name,
         ltv=ltv,
+        # The user's own declared language preference (one of
+        # dashboard.db.LANGUAGE_CODES, e.g. 'hi') — a new, independent
+        # query param, not part of the encrypted token: it isn't
+        # sensitive, so whoever generates the link can add it whenever
+        # ready without touching the encryption flow at all. Only
+        # actually used for ticket round-robin routing (see
+        # agent/context.py's resolve_session and tool_registry.py's
+        # create_support_ticket handler) — never overrides the bot's own
+        # per-message reply-language detection.
+        user_language=request.args.get('language', ''),
     )
 
 
