@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, Response, redirect, render_template, request, url_for
 
 from dashboard import auth, db, health
+from integrations import photo_storage
 from services import ticket_service
 
 bp = Blueprint('dashboard', __name__, url_prefix='/admin', template_folder='templates')
@@ -62,10 +63,15 @@ _PHOTO_MARKER_RE = re.compile(r'\[Shared a photo: (\S+)\]')
 
 def _with_photo_urls(messages: list) -> list:
     """Attaches photo_url (or None) to each message dict so the template
-    can render an <img> instead of the raw marker text/URL."""
+    can render an <img> instead of the raw marker text/URL. Normalized
+    through photo_storage.media_path_for_url so even a conversation old
+    enough to still hold a raw presigned S3 URL (saved before the
+    /media/<key> proxy existed, and likely expired by now — AWS caps a
+    presigned URL at 7 days) renders through the proxy instead of a dead
+    link."""
     for m in messages:
         match = _PHOTO_MARKER_RE.search(m.get('text') or '')
-        m['photo_url'] = match.group(1) if match else None
+        m['photo_url'] = photo_storage.media_path_for_url(match.group(1)) if match else None
     return messages
 
 

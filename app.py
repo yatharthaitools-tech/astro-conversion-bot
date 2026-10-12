@@ -7,9 +7,8 @@ import os
 import re
 import urllib.parse
 import uuid
-import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, url_for
+from flask import Flask, Response, jsonify, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
 logger = logging.getLogger(__name__)
@@ -470,9 +469,6 @@ def find_last_attachment_url(question: str, history: list):
     return None
 
 
-_S3_UPLOADS_HOST = photo_storage.uploads_host() if photo_storage.is_configured() else None
-
-
 def load_current_photo(question: str):
     """Only for a photo shared in THIS exact turn (marker on `question`
     itself, not history) — the model should actually look at a photo once,
@@ -503,24 +499,37 @@ def load_current_photo(question: str):
             return None, None
         return base64.b64encode(data).decode('ascii'), mime_type
 
-    # photo_storage.py's S3 path (see /upload) — the marker holds a real
-    # https:// presigned URL in this mode, not a /static/... one. Only
-    # ever fetched when its host is OUR OWN configured upload bucket —
-    # `question` ultimately comes from the client, so blindly GETing
-    # whatever URL shows up in the marker would be a textbook SSRF
-    # (a crafted marker pointing at an internal/metadata endpoint).
-    if _S3_UPLOADS_HOST and urllib.parse.urlparse(url).hostname == _S3_UPLOADS_HOST:
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-        except requests.RequestException:
-            return None, None
-        mime_type = response.headers.get('Content-Type', '')
-        if not mime_type.startswith('image/'):
-            return None, None
-        return base64.b64encode(response.content).decode('ascii'), mime_type
+    # photo_storage.py's S3 path (see /upload and /media/<key> below) —
+    # the marker holds our own /media/<key> app path in this mode (or, for
+    # history saved before the proxy existed, a real https:// presigned
+    # URL — media_path_for_url normalizes either to a key). Read straight
+    # from S3 with our own credentials rather than issuing an HTTP GET
+    # against whatever URL shows up in the marker — `question` ultimately
+    # comes from the client, so blindly fetching it would be a textbook SSRF.
+    media_path = photo_storage.media_path_for_url(url)
+    if media_path.startswith('/media/'):
+        result = photo_storage.get_object(media_path[len('/media/'):])
+        if result:
+            data, mime_type = result
+            if mime_type.startswith('image/'):
+                return base64.b64encode(data).decode('ascii'), mime_type
 
     return None, None
+
+
+@app.route('/media/<path:key>')
+def serve_photo(key):
+    """Serves an uploaded chat photo by proxying it through S3 with our
+    own long-lived credentials — see photo_storage.save()'s docstring for
+    why this exists instead of handing the browser a presigned URL (AWS
+    hard-caps those at 7 days). The key itself (a random uuid4 hex) is the
+    only access control, same trust model a presigned URL had: anyone
+    with the link can view it, nobody without it can guess one."""
+    result = photo_storage.get_object(key)
+    if not result:
+        return '', 404
+    data, mime_type = result
+    return Response(data, mimetype=mime_type, headers={'Cache-Control': 'private, max-age=86400'})
 
 
 # At least this many user turns happen before the agent's own

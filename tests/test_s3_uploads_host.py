@@ -1,6 +1,7 @@
 """integrations/photo_storage.py's uploads_host() — the real presigned-URL
-hostname for this bucket, used by app.py's load_current_photo() to gate
-which URLs it will fetch (an SSRF guard). Regression test for a real
+hostname for this bucket, used by media_path_for_url() to recognize an
+old presigned marker URL as one of ours and pull its S3 key back out.
+Regression test for a real
 bug: the previous hardcoded f"{bucket}.s3.{region}.amazonaws.com" guess
 never matched the actual presigned URL boto3 produces for this bucket —
 confirmed live against the real bucket, whose presigned URLs come back
