@@ -1163,7 +1163,16 @@ def get_analytics(date_from: str = None, date_to: str = None, ltv_tier: str = No
                             ELSE 1
                         END AS tier_rank,
                         COUNT(*) AS conversations,
-                        COUNT(*) FILTER (WHERE c.resolved_by = 'bot') AS resolved_by_bot,
+                        -- "Resolved by bot" is the complement of escalated,
+                        -- not a separately-tracked flag — any conversation
+                        -- that never raised a ticket counts here (an FAQ
+                        -- answered, a question handled, anything that
+                        -- didn't need a human), not only ones where the
+                        -- model happened to call mark_issue_resolved. This
+                        -- guarantees resolved_by_bot + escalated always
+                        -- equals the conversation count, with no silent
+                        -- third "neither" bucket.
+                        COUNT(*) FILTER (WHERE c.resolved_by IS DISTINCT FROM 'escalated') AS resolved_by_bot,
                         COUNT(*) FILTER (WHERE c.resolved_by = 'escalated') AS escalated,
                         AVG(c.rating) AS avg_rating,
                         COUNT(*) FILTER (WHERE EXISTS (
@@ -1186,12 +1195,21 @@ def get_analytics(date_from: str = None, date_to: str = None, ltv_tier: str = No
             # condition is against messages.created_at) — same session_id-
             # via-messages subquery the other conversations-table sections
             # above already use, not clause pasted in directly.
+            #
+            # "Resolved by bot" = total in scope minus escalated, not a
+            # separately-tracked flag — same reasoning as the ltv_rows
+            # query above (see its own comment): any conversation that
+            # never raised a ticket counts as bot-resolved, so this count
+            # plus escalated always equals the conversation total, with no
+            # silent third "neither" bucket.
             cur.execute(
-                f"""SELECT resolved_by, COUNT(*) as n FROM conversations
-                    WHERE session_id IN (SELECT DISTINCT session_id FROM messages {clause})
-                    AND resolved_by IS NOT NULL GROUP BY resolved_by""", params
+                f"""SELECT
+                        COUNT(*) FILTER (WHERE resolved_by = 'escalated') AS escalated,
+                        COUNT(*) FILTER (WHERE resolved_by IS DISTINCT FROM 'escalated') AS bot
+                    FROM conversations
+                    WHERE session_id IN (SELECT DISTINCT session_id FROM messages {clause})""", params
             )
-            resolved_by = {r['resolved_by']: r['n'] for r in cur.fetchall()}
+            resolved_by = cur.fetchone()
 
             cur.execute(
                 f"""SELECT AVG(rating) as avg_rating, COUNT(rating) as n_rated FROM conversations

@@ -64,6 +64,30 @@ def test_resolved_by_counts_respect_ltv_tier_filter():
     assert high_only["resolved_by_bot"] == 1
     assert high_only["resolved_by_escalation"] == 0
 
+    # The same complement-based counting applies to the per-tier
+    # ltv_breakdown table, not just the top-level KPI.
+    high_row = next(r for r in all_stats["ltv_breakdown"] if r["tier"] == "High")
+    assert high_row["resolved_by_bot"] == 1
+    assert high_row["escalated"] == 0
+
+
+def test_resolved_by_bot_counts_conversations_with_no_explicit_tool_call():
+    # A plain FAQ-answered conversation — no mark_issue_resolved, no
+    # create_support_ticket, just the bot replying. This must still count
+    # as "resolved by bot": it never escalated, so under the new
+    # complement-based definition it's in the bot bucket, not a silent
+    # third "neither" bucket that used to make resolved_by_bot +
+    # escalated undercount the real conversation total.
+    dashboard_db.record_turn("sess-faq", "u1", "when is my recharge back", "it's instant", "en", "bot", [], card_shown=False)
+    dashboard_db.record_turn("sess-escalated", "u2", "q", "a", "en", "bot",
+                              [{"tool": "create_support_ticket", "ok": True}], card_shown=False)
+
+    stats = dashboard_db.get_analytics()
+    assert stats["total_conversations"] == 2
+    assert stats["resolved_by_bot"] == 1
+    assert stats["resolved_by_escalation"] == 1
+    assert stats["resolved_by_bot"] + stats["resolved_by_escalation"] == stats["total_conversations"]
+
 
 def test_rating_stats_respect_ltv_tier_filter():
     _resolved_conversation("sess-high", "u1", ltv=5000, resolved_tool="mark_issue_resolved", rating=5)
