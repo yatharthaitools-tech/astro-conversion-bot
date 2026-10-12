@@ -273,6 +273,8 @@ h2 { font-size: 0.82rem; margin: 0 0 14px; color: var(--ink-soft); text-transfor
 }
 .transcript-user .transcript-bubble { background: linear-gradient(135deg, var(--sun-dark), var(--sun-light)); color: white; }
 .transcript-bot .transcript-bubble { background: var(--surface); border: 1px solid var(--line); }
+.transcript-photo { padding: 6px; background: var(--surface); border: 1px solid var(--line); }
+.transcript-photo img { display: block; max-width: 260px; max-height: 260px; border-radius: calc(var(--radius-md) - 4px); object-fit: cover; }
 .transcript-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
 .tag {
   font-size: 0.68rem;

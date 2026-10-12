@@ -449,6 +449,34 @@ def count_conversations(language: str = None, date_from: str = None, date_to: st
             return cur.fetchone()['n']
 
 
+def list_messages_for_export(language: str = None, date_from: str = None, date_to: str = None) -> list:
+    """Every message (every role, oldest-first within each conversation)
+    for whichever conversations the Conversations page's own filters
+    (language, date range — same semantics as list_conversations) select.
+    Backs the "Export messages CSV" link — the regular conversations CSV
+    is one row per conversation (summary only), which can't hold a whole
+    variable-length transcript; this is the actual chat content, not
+    just the conversations table."""
+    query = """SELECT m.session_id, c.user_id, m.role, m.text, m.source, m.card_shown, m.created_at
+               FROM messages m JOIN conversations c ON c.session_id = m.session_id
+               WHERE 1=1"""
+    params = []
+    if language:
+        query += " AND c.last_language = %s"
+        params.append(language)
+    if date_from:
+        query += " AND c.last_seen_at >= %s"
+        params.append(date_from)
+    if date_to:
+        query += " AND c.last_seen_at <= %s"
+        params.append(date_to + "T23:59:59")
+    query += " ORDER BY m.session_id, m.created_at ASC"
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return [_to_dict(r) for r in cur.fetchall()]
+
+
 def get_conversation(session_id: str) -> dict:
     with _connect() as conn:
         with conn.cursor() as cur:

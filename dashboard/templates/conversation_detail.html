@@ -20,7 +20,15 @@
   <div class="transcript">
     {% for m in conversation.messages %}
       <div class="transcript-row transcript-{{ m.role }}">
-        <div class="transcript-bubble">{{ m.text }}</div>
+        {% if m.photo_url %}
+          <div class="transcript-bubble transcript-photo">
+            <a href="{{ m.photo_url }}" target="_blank" rel="noopener">
+              <img src="{{ m.photo_url }}" alt="Photo shared by visitor" loading="lazy" />
+            </a>
+          </div>
+        {% else %}
+          <div class="transcript-bubble">{{ m.text }}</div>
+        {% endif %}
         {% if m.role == 'bot' %}
           <div class="transcript-meta">
             <span class="tag tag-source">{{ m.source or 'unknown' }}</span>

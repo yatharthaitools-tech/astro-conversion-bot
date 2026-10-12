@@ -16,6 +16,7 @@ role that can't act doesn't even see the control).
 """
 import csv
 import io
+import re
 
 from flask import Blueprint, Response, redirect, render_template, request, url_for
 
@@ -25,6 +26,24 @@ from services import ticket_service
 bp = Blueprint('dashboard', __name__, url_prefix='/admin', template_folder='templates')
 
 PAGE_SIZE = 25
+
+# Mirrors app.py's own _ATTACHMENT_MARKER_RE — the visitor-facing chat
+# widget (static/script.js's appendImageMessage) already renders the
+# actual photo for a `[Shared a photo: <url>]` marker instead of the raw
+# text; the admin transcript view previously showed that raw marker
+# (including the full presigned S3 URL, with its query-string signature)
+# verbatim. Not duplicated as an import from app.py to avoid a circular
+# import (app.py imports from dashboard).
+_PHOTO_MARKER_RE = re.compile(r'\[Shared a photo: (\S+)\]')
+
+
+def _with_photo_urls(messages: list) -> list:
+    """Attaches photo_url (or None) to each message dict so the template
+    can render an <img> instead of the raw marker text/URL."""
+    for m in messages:
+        match = _PHOTO_MARKER_RE.search(m.get('text') or '')
+        m['photo_url'] = match.group(1) if match else None
+    return messages
 
 
 @bp.context_processor
@@ -133,6 +152,7 @@ def conversation_detail(session_id):
             'conversation_detail.html', conversation=None, session_id=session_id,
             show_nav=True, active='conversations',
         ), 404
+    conv['messages'] = _with_photo_urls(conv['messages'])
     return render_template(
         'conversation_detail.html', conversation=conv, session_id=session_id,
         show_nav=True, active='conversations',
@@ -263,6 +283,31 @@ def export_conversations_csv():
     return Response(
         buffer.getvalue(), mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=conversations.csv'},
+    )
+
+
+@bp.route('/conversations/export-messages.csv')
+@auth.admin_required
+def export_messages_csv():
+    """The actual chat content — every message, not just the one-row-per-
+    conversation summary the regular export above gives. Same filters
+    (language, date range) as the Conversations page itself."""
+    language = request.args.get('language') or None
+    date_from = request.args.get('from') or None
+    date_to = request.args.get('to') or None
+    rows = db.list_messages_for_export(language=language, date_from=date_from, date_to=date_to)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(['Session', 'User', 'Role', 'Text', 'Source', 'Card Shown', 'Created At'])
+    for m in rows:
+        writer.writerow([
+            m['session_id'], m['user_id'], m['role'], m['text'],
+            m.get('source') or '', 'yes' if m.get('card_shown') else '', m['created_at'],
+        ])
+    return Response(
+        buffer.getvalue(), mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=conversation_messages.csv'},
     )
 
 
