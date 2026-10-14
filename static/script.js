@@ -159,10 +159,13 @@ const appUserId = document.body.dataset.userId || '';
 const appOauthToken = document.body.dataset.oauthToken || '';
 const appUserName = document.body.dataset.userName || '';
 const appLtv = document.body.dataset.ltv || '';
-// The user's own declared language preference (e.g. 'hi') — only used
-// backend-side for ticket round-robin routing (see agent/context.py's
-// resolve_session), never for picking which language the bot replies
-// in — that's still per-message auto-detection, unaffected by this.
+// The user's own declared language preference (e.g. 'hi', or the link's
+// full name like 'Hindi') — used backend-side for ticket round-robin
+// routing (see agent/context.py's resolve_session), and client-side
+// below to greet them in their own regional code-mixed language
+// up front, since we now know their preference before they type a
+// single word. Never affects which language the bot replies in once
+// the conversation is underway — that's still per-message auto-detection.
 const appUserLanguage = document.body.dataset.userLanguage || '';
 
 // Same identity trust rule as agent/context.py's resolve_session(): a
@@ -181,8 +184,42 @@ function resolveGreetingName() {
   return trimmed;
 }
 
+// The link sends a full language name ('Hindi', 'Tamil', …; see the real
+// production link format in agent/context.py's matching normalization),
+// not the short code these greetings are keyed by — reversed the same
+// way backend-side, so either form resolves to the same greeting; an
+// already-short code just passes through unchanged.
+const LANGUAGE_NAME_TO_CODE = { hindi: 'hi', tamil: 'ta', telugu: 'te', malayalam: 'ml', english: 'en' };
+
+// Regional code-mixed greetings (Hinglish/Tanglish/Tenglish/Manglish) —
+// matches the four languages #4 asked ticket routing to cover (see
+// dashboard/db.py's LANGUAGE_CODES). Anything else (including 'en'/no
+// preference) falls through to the plain English greeting below.
+const GREETINGS_BY_LANGUAGE = {
+  hi: (name) => name
+    ? `Namaste ${name}! Main aapki kaise help kar sakta hoon?`
+    : 'Namaste! Main aapki kaise help kar sakta hoon?',
+  ta: (name) => name
+    ? `Vanakkam ${name}! Naan ungalukku eppadi help pannuven?`
+    : 'Vanakkam! Naan ungalukku eppadi help pannuven?',
+  te: (name) => name
+    ? `Namaskaram ${name}! Nenu meeku ela help cheyagalanu?`
+    : 'Namaskaram! Nenu meeku ela help cheyagalanu?',
+  ml: (name) => name
+    ? `Namaskaram ${name}! Njan ningalkku engane help cheyyam?`
+    : 'Namaskaram! Njan ningalkku engane help cheyyam?',
+};
+
+function resolveGreetingLanguageCode() {
+  const raw = appUserLanguage.trim().toLowerCase();
+  if (!raw) return null;
+  return LANGUAGE_NAME_TO_CODE[raw] || raw;
+}
+
 function buildWelcomeMessage() {
   const name = resolveGreetingName();
+  const greeter = GREETINGS_BY_LANGUAGE[resolveGreetingLanguageCode()];
+  if (greeter) return greeter(name);
   return name ? `Hi ${name}! How can I help you today?` : 'Hi! How can I help you today?';
 }
 

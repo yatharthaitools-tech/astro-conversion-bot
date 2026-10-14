@@ -168,14 +168,16 @@ def _handle_create_support_ticket(safe_input, ctx):
     if not category or not sub_category or not description:
         return {"error": "category, sub_category, and description are required"}
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
-    # Prefer the visitor's OWN declared language (from the link, see
-    # agent/context.py's SessionContext.user_language) for ROUTING this
-    # ticket to the right support agent — more reliable than this one
-    # message's auto-detected script, which just picks reply language and
-    # can be wrong (e.g. they typed this message in English but actually
-    # prefer Hindi support). Falls back to the per-message detection when
-    # no declared preference came through the link.
-    routing_language = ctx.user_language or ctx.language
+    # ROUTE on the visitor's OWN declared language from the link (see
+    # agent/context.py's SessionContext.user_language) only — never the
+    # per-message auto-detected script of what they just typed, which is
+    # just this message's reply language and can be wrong for routing
+    # (e.g. they typed this message in English but actually prefer Hindi
+    # support). No declared preference at all (an older link format, or
+    # the param not sent) means no language preference for routing,
+    # same as before this param existed — _pick_round_robin_assignee
+    # already treats None the same as "no match", not "handles nothing".
+    routing_language = ctx.user_language
     ticket = ticket_service.create_ticket(
         ctx.user_id, category, sub_category, description, evidence_url,
         session_id=ctx.session_id, language=routing_language, ltv=ctx.ltv,

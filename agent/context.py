@@ -25,6 +25,16 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Optional
 
+from dashboard.db import LANGUAGE_CODES
+
+# The link sends a full language name ('Hindi', 'Tamil', …), not the
+# short code dashboard.db.LANGUAGE_CODES/_pick_round_robin_assignee
+# actually match against ('hi', 'ta', …) — see the real production link:
+# .../?user_id=376&name=...&ltv=0&language=Hindi. Reversed so either form
+# normalizes to the same code; an already-short code (or the bare English
+# name, which has none) just passes through unchanged below.
+_LANGUAGE_CODE_BY_NAME = {name.lower(): code for code, name in LANGUAGE_CODES.items()}
+
 
 @dataclass
 class SessionContext:
@@ -34,7 +44,7 @@ class SessionContext:
     oauth_token: Optional[str] = None  # unverified — see module docstring
     user_name: Optional[str] = None  # only trusted alongside a real identity, see below
     ltv: Optional[float] = None  # ditto — the app's own ₹ lifetime-spend figure, not a Redash query
-    user_language: Optional[str] = None  # the visitor's OWN declared preference (e.g. 'hi'), from a new `language` link param — ditto re: trust. Only used for ticket round-robin routing (agent/tool_registry.py's create_support_ticket handler), never for which language the bot replies in — that stays `language` above, detected fresh per message.
+    user_language: Optional[str] = None  # the visitor's OWN declared preference (e.g. 'hi'), from a new `language` link param — ditto re: trust. This is the ONLY thing ticket round-robin routing uses (agent/tool_registry.py's create_support_ticket handler no longer falls back to the per-message detected language below) — never used for which language the bot replies in, that stays `language` above, detected fresh per message.
     last_attachment_url: Optional[str] = None
     has_prior_reply: bool = False
     trace: list = field(default_factory=list)
@@ -80,12 +90,17 @@ def _user_name_from(payload: dict):
 def _user_language_from(payload: dict):
     """The visitor's own declared language, from a new `language` link
     param (see app.py's / route and static/script.js's appUserLanguage).
-    Not validated against dashboard.db.LANGUAGE_CODES here on purpose —
-    an unsupported/unknown code just never matches any support agent's
-    own languages list in _pick_round_robin_assignee's SQL, the exact
-    same no-op degradation the no-preference case already has."""
+    Normalized from the link's full name ('Hindi') to the short code
+    ('hi') dashboard.db.LANGUAGE_CODES/_pick_round_robin_assignee
+    actually match against — an already-short code, or anything else
+    unrecognized (e.g. 'english', which isn't a routing language), just
+    passes through unchanged and simply never matches any support
+    agent's own languages list, the same no-op degradation the
+    no-preference case already has."""
     raw = str((payload or {}).get("user_language") or "").strip().lower()
-    return raw or None
+    if not raw:
+        return None
+    return _LANGUAGE_CODE_BY_NAME.get(raw, raw)
 
 
 def resolve_session(payload: dict, session_id: str, language: str, history: list) -> SessionContext:
