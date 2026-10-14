@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Conversation — AstroLokal Admin{% endblock %}
 {% block content %}
+{% if ticket_id %}
+<a href="{{ url_for('dashboard.ticket_detail', ticket_id=ticket_id) }}" class="back-link">&larr; Back to ticket</a>
+{% else %}
 <a href="{{ url_for('dashboard.conversations') }}" class="back-link">&larr; Back to conversations</a>
+{% endif %}
 
 {% if not conversation %}
   <h1>Not found</h1>

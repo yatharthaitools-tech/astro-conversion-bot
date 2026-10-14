@@ -175,16 +175,22 @@ def conversations():
 @bp.route('/conversations/<session_id>')
 @auth.admin_required
 def conversation_detail(session_id):
+    # ticket_id rides along only when this page was reached via a
+    # ticket's "View chat" link (see ticket_detail.html) — lets the
+    # back-link below return to that same ticket instead of always
+    # landing on the Conversations list, which is where "View chat" ->
+    # back used to strand a user who came from Tickets.
+    ticket_id = request.args.get('ticket_id') or None
     conv = db.get_conversation(session_id)
     if not conv:
         return render_template(
             'conversation_detail.html', conversation=None, session_id=session_id,
-            show_nav=True, active='conversations',
+            show_nav=True, active='conversations', ticket_id=ticket_id,
         ), 404
     conv['messages'] = _with_photo_urls(conv['messages'])
     return render_template(
         'conversation_detail.html', conversation=conv, session_id=session_id,
-        show_nav=True, active='conversations',
+        show_nav=True, active='conversations', ticket_id=ticket_id,
     )
 
 

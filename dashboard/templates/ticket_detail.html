@@ -87,7 +87,7 @@
         {% if ticket.session_id %}
         <div class="side-field">
           <span class="label">Conversation</span>
-          <a href="{{ url_for('dashboard.conversation_detail', session_id=ticket.session_id) }}">View chat &rarr;</a>
+          <a href="{{ url_for('dashboard.conversation_detail', session_id=ticket.session_id, ticket_id=ticket.id) }}">View chat &rarr;</a>
         </div>
         {% endif %}
       </div>
