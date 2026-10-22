@@ -31,7 +31,16 @@ logger = logging.getLogger(__name__)
 GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash-001')
 GOOGLE_CLOUD_LOCATION = os.environ.get('GOOGLE_CLOUD_LOCATION', 'global')
 GEMINI_BILLING_FEATURE = os.environ.get('GEMINI_BILLING_FEATURE', 'astro_conversion_bot')
-REQUEST_TIMEOUT_SECONDS = 15
+REQUEST_TIMEOUT_SECONDS = 25  # was 15 — live testing hit a read timeout on a trivial "hi", falling to the rule-based fallback for no good reason
+
+# Local/dev shortcut: a free Google AI Studio API key (no GCP project, no
+# service account, no billing setup) hits the public Generative Language
+# API instead of Vertex AI — same generateContent request/response shape,
+# just a different host and a plain key instead of a Bearer token. Takes
+# priority over GEMINI_VERTEX_CREDENTIALS_JSON when both are set, since
+# this only exists for local testing — production should keep using the
+# real Vertex AI service-account flow below.
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
 
 _SCOPES = ['https://www.googleapis.com/auth/cloud-platform']
 
@@ -78,19 +87,23 @@ def _load_credentials():
 
 
 def is_configured() -> bool:
+    if GEMINI_API_KEY:
+        return True
     _load_credentials()
     return _credentials is not None
 
 
 def configuration_error() -> str:
-    """Specific reason Gemini/Vertex isn't configured, or None if it is —
-    for the admin dashboard's live-status banner (never just a silent
-    guess at why replies are rule-based)."""
+    """Specific reason Gemini isn't configured, or None if it is — for the
+    admin dashboard's live-status banner (never just a silent guess at why
+    replies are rule-based)."""
+    if GEMINI_API_KEY:
+        return None
     _load_credentials()
     if _credentials is not None:
         return None
     if not os.environ.get('GEMINI_VERTEX_CREDENTIALS_JSON'):
-        return "GEMINI_VERTEX_CREDENTIALS_JSON is not set"
+        return "Neither GEMINI_API_KEY nor GEMINI_VERTEX_CREDENTIALS_JSON is set"
     return "GEMINI_VERTEX_CREDENTIALS_JSON is set but failed to parse — check the service-account credentials (JSON or YAML)"
 
 
@@ -100,7 +113,18 @@ def _get_access_token() -> str:
     return _credentials.token
 
 
+def _auth_headers() -> dict:
+    """Auth headers for whichever mode is configured — a plain API-key
+    header for the local-testing Google AI Studio path, a Bearer token
+    from the real service-account flow otherwise."""
+    if GEMINI_API_KEY:
+        return {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
+    return {'Authorization': f'Bearer {_get_access_token()}', 'Content-Type': 'application/json'}
+
+
 def _endpoint_url() -> str:
+    if GEMINI_API_KEY:
+        return f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent'
     if GOOGLE_CLOUD_LOCATION == 'global':
         host = 'aiplatform.googleapis.com'
     else:

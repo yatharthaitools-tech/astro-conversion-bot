@@ -17,7 +17,8 @@ load_dotenv()
 
 from agent import context as agent_context
 from agent import orchestrator as agent_orchestrator
-from integrations import link_token, photo_storage, recommend_flow_client, s3_client
+from integrations import faq_client, link_token, photo_storage, recommend_flow_client, s3_client
+from services import ticket_service
 from dashboard import auth as dashboard_auth
 from dashboard import db as dashboard_db
 from dashboard.routes import bp as dashboard_bp
@@ -63,7 +64,7 @@ PRD_INTENTS = {
         'keywords': ['astrology guidance', 'guidance', 'help', 'need help', 'astrology', 'kundali', 'horoscope'],
         'answers': {
             'en': 'I can help with astrology guidance. Please tell me what you need help with, and I’ll suggest the right consultation.',
-            'hi': 'मैं ज्योतिष मार्गदर्शन में मदद कर सकता हूँ। कृपया बताइए कि आपको किस चीज़ में मदद चाहिए, और मैं सही परामर्श सुझाऊँगा।'
+            'hi': 'मैं ज्योतिष मार्गदर्शन में मदद कर सकती हूँ। कृपया बताइए कि आपको किस चीज़ में मदद चाहिए, और मैं सही परामर्श सुझाऊँगी।'
         }
     },
     'career': {
@@ -84,7 +85,7 @@ PRD_INTENTS = {
         ],
         'answers': {
             'en': 'I can help with career-related guidance. A career consultation may be the best fit. Would you like to speak with an astrologer or explore available packages?',
-            'hi': 'मैं कैरियर से जुड़े मार्गदर्शन में मदद कर सकता हूँ। कैरियर परामर्श सबसे उपयुक्त हो सकता है। क्या आप ज्योतिषी से बात करना चाहेंगे या उपलब्ध पैकेज देखें?'
+            'hi': 'मैं कैरियर से जुड़े मार्गदर्शन में मदद कर सकती हूँ। कैरियर परामर्श सबसे उपयुक्त हो सकता है। क्या आप ज्योतिषी से बात करना चाहेंगे या उपलब्ध पैकेज देखें?'
         }
     },
     'love': {
@@ -97,7 +98,7 @@ PRD_INTENTS = {
         ],
         'answers': {
             'en': 'I can help with relationship guidance. I can connect you with a relationship specialist or suggest a suitable consultation package.',
-            'hi': 'मैं रिश्ते और प्रेम से जुड़े मार्गदर्शन में मदद कर सकता हूँ। मैं आपको रिलेशनशिप स्पेशलिस्ट से जोड़ सकता हूँ या उचित परामर्श पैकेज सुझा सकता हूँ।'
+            'hi': 'मैं रिश्ते और प्रेम से जुड़े मार्गदर्शन में मदद कर सकती हूँ। मैं आपको रिलेशनशिप स्पेशलिस्ट से जोड़ सकती हूँ या उचित परामर्श पैकेज सुझा सकती हूँ।'
         }
     },
     'finance': {
@@ -110,7 +111,7 @@ PRD_INTENTS = {
         ],
         'answers': {
             'en': 'I can help with finance-related guidance. A financial astrology consultation may be suitable. Would you like to book a session?',
-            'hi': 'मैं वित्त से जुडे़ मार्गदर्शन में मदद कर सकता हूँ। वित्तीय ज्योतिष परामर्श उपयुक्त हो सकता है। क्या आप बैठक बुक करना चाहेंगे?'
+            'hi': 'मैं वित्त से जुडे़ मार्गदर्शन में मदद कर सकती हूँ। वित्तीय ज्योतिष परामर्श उपयुक्त हो सकता है। क्या आप बैठक बुक करना चाहेंगे?'
         }
     },
     'marriage': {
@@ -129,28 +130,35 @@ PRD_INTENTS = {
         ],
         'answers': {
             'en': 'I can help with marriage-related guidance. I can suggest the right consultation based on your concern and preferred service.',
-            'hi': 'मैं शादी से जुड़े मार्गदर्शन में मदद कर सकता हूँ। आपकी चिंता और पसंद के अनुसार सही परामर्श सुझा सकता हूँ।'
+            'hi': 'मैं शादी से जुड़े मार्गदर्शन में मदद कर सकती हूँ। आपकी चिंता और पसंद के अनुसार सही परामर्श सुझा सकती हूँ।'
         }
     },
     'consultation_request': {
-        'keywords': ['talk to astrologer', 'consultation', 'book consultation', 'book a consultation', 'want to talk', 'astrologer'],
+        # 'want to talk' deliberately removed — it's a clean phrase match
+        # even inside "I DON'T want to talk to anyone", so it was firing
+        # this intent (and the CTA safety net below) on an explicit
+        # decline, confirmed live: "no I don't want to talk to anyone
+        # right now, just venting" force-showed the connect card right
+        # after the visitor declined it. Too fragile a phrase to
+        # keyword-match without real negation handling.
+        'keywords': ['talk to astrologer', 'consultation', 'book consultation', 'book a consultation', 'astrologer'],
         'answers': {
             'en': 'Sure. I can help you book a consultation. Please choose the type of consultation you need and your preferred time.',
-            'hi': 'बिलकुल। मैं आपको परामर्श बुक करने में मदद कर सकता हूँ। कृपया बताइए आपको किस प्रकार का परामर्श चाहिए और आप किस समय को पसंद करते हैं।'
+            'hi': 'बिलकुल। मैं आपको परामर्श बुक करने में मदद कर सकती हूँ। कृपया बताइए आपको किस प्रकार का परामर्श चाहिए और आप किस समय को पसंद करते हैं।'
         }
     },
     'package_selection': {
         'keywords': ['what package', 'which package', 'package', 'best package', 'suggest package'],
         'answers': {
             'en': 'Based on your concern, I recommend starting with a consultation that matches your issue. I can suggest the best package based on your needs.',
-            'hi': 'आपकी समस्या के आधार पर, मैं ऐसे परामर्श की सलाह दूँगा जो आपकी चिंता से मेल खाता हो। मैं आपके needs के आधार पर सबसे सही पैकेज सुझा सकता हूँ।'
+            'hi': 'आपकी समस्या के आधार पर, मैं ऐसे परामर्श की सलाह दूँगी जो आपकी चिंता से मेल खाता हो। मैं आपके needs के आधार पर सबसे सही पैकेज सुझा सकती हूँ।'
         }
     },
     'booking_flow': {
         'keywords': ['book', 'booking', 'want to book', 'schedule', 'appointment'],
         'answers': {
             'en': 'Please share your name, preferred consultation type, and a suitable time. Once confirmed, I can help you complete the booking.',
-            'hi': 'कृपया अपना नाम, पसंदीदा परामर्श प्रकार और सही समय बताइए। पुष्टि होने के बाद, मैं बुकिंग पूरी करने में मदद करूँगा।'
+            'hi': 'कृपया अपना नाम, पसंदीदा परामर्श प्रकार और सही समय बताइए। पुष्टि होने के बाद, मैं बुकिंग पूरी करने में मदद करूँगी।'
         }
     },
     'support_question': {
@@ -164,17 +172,19 @@ PRD_INTENTS = {
         'keywords': ['need help', 'support', 'issue', 'problem', 'unresolved', 'need assistance'],
         'answers': {
             'en': 'I can help with your issue. If your concern needs specialist support, I can route you to the right next step or connect you with a support team.',
-            'hi': 'मैं आपकी समस्या में मदद कर सकता हूँ। अगर आपके मामले के लिए विशेषज्ञ सहायता चाहिए, तो मैं आपको सही अगला कदम या सपोर्ट टीम से जोड़ सकता हूँ।'
+            'hi': 'मैं आपकी समस्या में मदद कर सकती हूँ। अगर आपके मामले के लिए विशेषज्ञ सहायता चाहिए, तो मैं आपको सही अगला कदम या सपोर्ट टीम से जोड़ सकती हूँ।'
         }
     }
 }
 
+# ta/te/ml are a v1 heuristic, not native-reviewed — same caveat as the
+# other regional-language strings elsewhere in this file.
 NO_INFO = {
-    'en': "I don't have information regarding that.",
-    'hi': "मुझे इसके बारे में जानकारी नहीं है।",
-    'ta': "எனக்கு அதைப் பற்றி தகவல் இல்லை.",
-    'te': "దాని గురించి నాకు సమాచారం లేదు.",
-    'ml': "അതിനെക്കുറിച്ച് എനിക്ക് വിവരമില്ല.",
+    'en': "Sorry, I didn't quite get that.",
+    'hi': "माफ़ करना, मैं समझी नहीं।",
+    'ta': "மன்னிக்கவும், அது எனக்குப் புரியவில்லை.",
+    'te': "క్షమించండి, అది నాకు అర్థం కాలేదు.",
+    'ml': "ക്ഷമിക്കണം, അത് എനിക്ക് മനസ്സിലായില്ല.",
 }
 
 # Code-level gate for the ONE hard, non-negotiable rule ("never answer a
@@ -185,6 +195,29 @@ NO_INFO = {
 # precedent as astrohelp's own code-enforced rules: prompt-only isn't
 # trustworthy enough for something this deterministic. ta/te/ml keyword
 # lists are a v1 heuristic, not native-reviewed.
+# Real account/booking/support terms that mean a message is about an
+# actual issue, not a fortune question, even when it also contains a
+# PREDICTION_KEYWORDS phrase like "will i"/"what will happen" (e.g. "will I
+# get my refund" or "what will happen to my booking") — checked FIRST in
+# is_prediction_intent, before any prediction-keyword match, so a real
+# support question never gets deflected with the canned fortune-question
+# non-answer. ta/te/ml lists are a v1 heuristic, not native-reviewed, same
+# caveat as PREDICTION_KEYWORDS below.
+ISSUE_OVERRIDE_KEYWORDS = {
+    'en': [
+        'refund', 'booking', 'payment', 'order', 'cancel', 'ticket',
+        'charged', 'deducted', 'coins', 'wallet', 'money back',
+        'complaint', 'support', 'account', 'session', 'recharge',
+    ],
+    'hi': [
+        'रिफंड', 'बुकिंग', 'भुगतान', 'पैसे वापस', 'शिकायत', 'सपोर्ट',
+        'अकाउंट', 'वॉलेट', 'रिचार्ज', 'टिकट',
+    ],
+    'ta': ['பணம் திரும்ப', 'முன்பதிவு', 'புகார்', 'கணக்கு', 'ரீசார்ஜ்'],
+    'te': ['రీఫండ్', 'బుకింగ్', 'ఫిర్యాదు', 'ఖాతా', 'రీచార్జ్'],
+    'ml': ['റീഫണ്ട്', 'ബുക്കിംഗ്', 'പരാതി', 'അക്കൗണ്ട്', 'റീചാർജ്'],
+}
+
 PREDICTION_KEYWORDS = {
     'en': [
         'will i', 'will my', 'when will i', 'when will my', 'what will happen',
@@ -249,10 +282,139 @@ def connect_message(lang: str, concern: str) -> str:
     return template.format(concern=noun)
 
 
+# Shared by every keyword-list detector below — `normalized` is whatever
+# the caller already normalized the text to (normalize_text() or .lower()).
+def _contains_any(normalized: str, keywords) -> bool:
+    return any(keyword in normalized for keyword in keywords)
+
+
+# Shared {lang: [...]} lookup with an 'en' fallback.
+def _lang_list(keyword_dict: dict, lang: str) -> list:
+    return keyword_dict.get(lang, keyword_dict['en'])
+
+
 def is_prediction_intent(question, lang):
     normalized = normalize_text(question)
-    keywords = PREDICTION_KEYWORDS.get(lang, PREDICTION_KEYWORDS['en'])
-    return any(keyword in normalized for keyword in keywords)
+    if _contains_any(normalized, _lang_list(ISSUE_OVERRIDE_KEYWORDS, lang)):
+        return False
+    return _contains_any(normalized, _lang_list(PREDICTION_KEYWORDS, lang))
+
+
+# Code-level gate for another hard, non-negotiable rule ("fraud/cheat/
+# 'waste of time'/legal-threat language always gets a real ticket") —
+# added after live testing showed the model sometimes CLAIMS it raised a
+# ticket for this kind of language ('I've told the team') without
+# actually calling create_support_ticket. Same precedent as
+# PREDICTION_KEYWORDS above: prompt-only isn't trustworthy enough for a
+# must-never-fail rule. ta/te/ml lists are a v1 heuristic, not
+# native-reviewed.
+LEGAL_THREAT_KEYWORDS = {
+    'en': ['legal', 'lawyer', 'police', 'court', 'sue', 'consumer forum', 'consumer court'],
+    'hi': ['कानूनी', 'वकील', 'पुलिस', 'कोर्ट', 'अदालत'],
+    'ta': ['சட்ட நடவடிக்கை', 'வழக்கறிஞர்', 'காவல்துறை', 'நீதிமன்றம்'],
+    'te': ['చట్టపరమైన', 'న్యాయవాది', 'పోలీసు', 'కోర్టు'],
+    'ml': ['നിയമപരമായ', 'അഭിഭാഷകൻ', 'പോലീസ്', 'കോടതി'],
+}
+SEVERE_COMPLAINT_KEYWORDS = {
+    'en': ['fraud', 'cheat', 'scam', 'waste of time', 'waste of money'],
+    'hi': ['धोखा', 'फ्रॉड', 'समय की बर्बादी', 'पैसे की बर्बादी'],
+    'ta': ['மோசடி', 'ஏமாற்று', 'நேரம் வீண்'],
+    'te': ['మోసం', 'స్కామ్', 'సమయం వృథా'],
+    'ml': ['വഞ്ചന', 'തട്ടിപ്പ്', 'സമയം പാഴായി'],
+}
+
+
+def is_severe_complaint(question, lang):
+    """(is_severe, is_legal_threat) — is_legal_threat decides the ticket
+    category (escalation vs refund) when the safety net below fires."""
+    normalized = normalize_text(question)
+    is_legal = _contains_any(normalized, _lang_list(LEGAL_THREAT_KEYWORDS, lang))
+    is_severe = is_legal or _contains_any(normalized, _lang_list(SEVERE_COMPLAINT_KEYWORDS, lang))
+    return is_severe, is_legal
+
+
+# General backstop, broader than is_severe_complaint above: rather than
+# enumerate every possible complaint phrasing (refund, no-reply, billing,
+# ...) that SHOULD result in a real ticket, catch the actual failure mode
+# directly — live testing showed the model's own reply sometimes claims
+# it escalated/flagged something ('maine team ko flag kar diya hai') while
+# never actually calling create_support_ticket. A plain "astrologer never
+# replied, coins deducted, want a refund" complaint hit this on 7/7 tries
+# in testing despite explicit tool-schema instructions to always raise a
+# ticket for exactly this case. Checked against the AGENT's reply text,
+# not the visitor's question — this is about catching a broken promise,
+# not classifying the complaint. ta/te/ml phrases are a v1 heuristic, not
+# native-reviewed, same caveat as this file's other regional-language lists.
+# Tried matching full phrases, then verb-tense root-word co-occurrence —
+# both kept missing new real phrasings live ("flag kar deti hoon", "team
+# ko bolkar", "let me get the team on this", ...): English/Hindi have too
+# many ways to say "I'm telling the team" to ever fully enumerate. The
+# robust anchor instead: agent/prompt.py's REPAIR section explicitly
+# reserves "the team"/"our team" as the ONLY approved phrasing for
+# anything escalation-related, and forbids every other internal-sounding
+# word — so "team" appearing in a reply AT ALL is already a reliable
+# signal on its own, regardless of which verb surrounds it. 'ticket'/
+# 'escalat' kept as direct triggers too, for the rare case that word
+# leaks despite the REPAIR rule against it (itself worth catching).
+_ESCALATION_CLAIM_WORDS = ['team', 'टीम', 'ticket', 'escalat']
+
+
+def answer_claims_escalation(answer: str) -> bool:
+    """Checked regardless of the question's detected language — the
+    model's own reply slips into Hindi/Hinglish wording even when replying
+    to an English question (seen repeatedly in testing), so gating this by
+    the question's language would miss an escalation claim phrased in a
+    different register than the question."""
+    return _contains_any((answer or '').lower(), _ESCALATION_CLAIM_WORDS)
+
+
+# Same claim-mismatch pattern as _ESCALATION_CLAIM_PHRASES above, but for
+# the connect card instead of a ticket — live testing (a real multi-turn
+# conversation) showed the model's own reply twice said something like
+# "want me to connect you?" while never actually calling
+# trigger_recommend_astrologer, leaving the text promising a card that
+# never showed up. Also covers the reverse case: the visitor says "yes"
+# to a connect offer the BOT made last turn, and the card still has to
+# show up even if this turn's reply doesn't repeat the word "connect".
+_CONNECT_OFFER_PHRASES = [
+    'connect you', 'connect now', 'want to connect', 'tap below',
+    'connect right now', 'talking to someone', 'talk to someone',
+    'connecting you', 'connect karu', 'connect kar doon', 'connect kardu',
+    'connect karoon', 'jodu', 'jod doon', 'jod du', 'jod sakti',
+]
+
+_AFFIRMATIVE_REPLIES = [
+    'yes', 'yeah', 'yep', 'yup', 'sure', 'please connect', 'connect me',
+    'go ahead', 'haan', 'ha', 'theek hai', 'zaroor', 'bilkul', 'connect karo',
+    'connect kar do', 'kar do', 'okay connect', 'ok connect',
+]
+
+
+def answer_offers_connect(text: str) -> bool:
+    return _contains_any((text or '').lower(), _CONNECT_OFFER_PHRASES)
+
+
+def is_affirmative_reply(question: str) -> bool:
+    normalized = f' {normalize_text(question)} '
+    return any(f' {phrase} ' in normalized for phrase in _AFFIRMATIVE_REPLIES)
+
+
+def last_bot_message(history: list) -> str:
+    for turn in reversed(history or []):
+        if (turn.get('sender') or turn.get('role')) == 'bot':
+            return turn.get('text') or ''
+    return ''
+
+
+# Shared by /ask's two code-level ticket backstops (severe-complaint and
+# claim-mismatch) — same create_ticket call and ctx bookkeeping either way.
+def _raise_safety_net_ticket(ctx, session_id, question, category, sub_category, description_prefix, trace_source):
+    ticket_service.create_ticket(
+        ctx.user_id, category, sub_category, f"{description_prefix}: {question}",
+        session_id=session_id, language=ctx.user_language, ltv=ctx.ltv,
+    )
+    ctx.ticket_raised = True
+    ctx.trace.append({'tool': 'create_support_ticket', 'ok': True, 'source': trace_source})
 
 
 # Small inline icons (not emoji) for the opening quick-reply chips, one per
@@ -349,6 +511,18 @@ _CONCERN_BY_INTENT = {'career': 'career', 'love': 'love', 'finance': 'finance', 
 
 def concern_for_intent(intent) -> str:
     return _CONCERN_BY_INTENT.get(intent, 'general')
+
+
+# Intents the CTA safety net (in /ask below) must NEVER force the connect
+# card for, even past warmup — a refund/billing complaint or a "need help"
+# support ask has nothing to do with astrology, so the card showing up
+# there reads as a non-sequitur rather than a genuine next step. Every
+# other recognized intent (including the 4 concern buckets AND the more
+# generic ones like general_guidance/consultation_request/package_selection/
+# booking_flow) still gets the safety net as before — this is a narrow
+# carve-out for the two intents that are explicitly about a problem/support
+# ask, not scoping it down to only the concern buckets.
+_SAFETY_NET_EXCLUDED_INTENTS = {'support_question', 'support_escalation'}
 
 
 @app.route('/')
@@ -574,6 +748,18 @@ def ask():
         ctx.ui_action = recommend_flow_client.trigger(lang, None, concern)
         answer = connect_message(lang, concern)
         source = 'prediction_deflect'
+    elif faq_client.critical_fact(question, lang):
+        # Code-level bypass for a curated set of fact-sensitive questions
+        # (see faq_client.critical_fact's own docstring) — live testing
+        # showed the model sometimes skips calling get_app_faq entirely
+        # for a question that FEELS like a simple yes/no and just
+        # guesses, confirmed wrong for both a feature-existence question
+        # (search bar, English) and a privacy question (Tamil). Answering
+        # straight from the real fact here trades some of the model's
+        # natural phrasing for a guarantee of correctness, same tradeoff
+        # already accepted for the prediction-deflection above.
+        answer = faq_client.critical_fact(question, lang)
+        source = 'critical_faq_deflect'
     else:
         answer = agent_orchestrator.run_chat_turn(
             question, history, ctx, turn_number, past_warmup,
@@ -581,13 +767,17 @@ def ask():
             image_unavailable=image_unavailable,
         )
         source = 'agent'
+        intent = map_intent(question)
         if not answer:
             # Gemini unconfigured or the whole tool loop failed — everything
             # else in the app still works, same posture as astrohelp.
-            intent = map_intent(question)
             answer = rule_based_answer(question, lang, intent)
             source = 'rule_based'
-        elif not ctx.ui_action and past_warmup and map_intent(question) is not None:
+        elif (
+            not ctx.ui_action and past_warmup and intent is not None
+            and intent not in _SAFETY_NET_EXCLUDED_INTENTS
+            and not _contains_any(normalize_text(question), _lang_list(ISSUE_OVERRIDE_KEYWORDS, lang))
+        ):
             # Safety net, not a substitute for the agent's own tool call:
             # live testing showed the model doesn't reliably call
             # trigger_recommend_astrologer for a general recognized concern
@@ -596,8 +786,74 @@ def ask():
             # content — but the core "every reply moves toward action"
             # principle still needs the button to actually exist whenever
             # the reply implies one). Only fires when the agent didn't
-            # already set an action itself.
-            ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(map_intent(question)))
+            # already set an action itself. Excludes support_question/
+            # support_escalation (see _SAFETY_NET_EXCLUDED_INTENTS) — a
+            # refund/support complaint has nothing to do with astrology,
+            # so forcing the card there just contradicts whatever the
+            # agent's own tool calls (e.g. create_support_ticket) already
+            # decided was the right response. ALSO excludes any message
+            # containing an ISSUE_OVERRIDE_KEYWORDS term (payment,
+            # deducted, refund, recharge, ...) regardless of which intent
+            # matched — confirmed live: "money got deducted" classifies as
+            # the 'finance' concern bucket (via the generic word "money"),
+            # which isn't support_question/support_escalation, so without
+            # this check the card still got force-shown for a payment
+            # failure even after create_support_ticket's own instructions
+            # were fixed to never pivot there. A real finance CONCERN
+            # ("worried about my finances") doesn't contain any of these
+            # override terms, so it's unaffected.
+            ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(intent))
+
+        if not ctx.ui_action and past_warmup and (
+            answer_offers_connect(answer)
+            or (answer_offers_connect(last_bot_message(history)) and is_affirmative_reply(question))
+        ):
+            # Backstop for two confirmed-live failure modes: (1) this
+            # turn's own reply says "want me to connect you?" but never
+            # actually called trigger_recommend_astrologer, leaving that
+            # promise empty; (2) the BOT offered to connect last turn and
+            # the visitor just said "yes"/"haan" — the card must show up
+            # this turn even if the new reply doesn't repeat the word
+            # "connect". Gated on past_warmup so a stray pre-warmup offer
+            # doesn't get compounded by also forcing the card early (see
+            # the no-backstop warmup-timing note elsewhere).
+            ctx.ui_action = recommend_flow_client.trigger(lang, None, concern_for_intent(intent))
+
+    is_severe, is_legal_threat = is_severe_complaint(question, lang)
+    if is_severe and not ctx.ticket_raised:
+        # Code-level backstop for the ONE must-never-fail rule here: live
+        # testing showed the model sometimes CLAIMS it raised a ticket for
+        # fraud/cheat/"waste of time"/legal-threat language ('I've told
+        # the team') without actually calling create_support_ticket. Raise
+        # a real one ourselves rather than trust prompt compliance for
+        # this — same reasoning as PREDICTION_KEYWORDS' own gate. Checked
+        # regardless of which path produced `answer` above (prediction
+        # deflect or agent), and regardless of whether the agent's own
+        # tool call already set ctx.ticket_raised (if it did, this is a
+        # no-op). Never overrides `answer` itself — only guarantees the
+        # ticket genuinely exists so whatever the reply already said
+        # ("I've flagged this") is actually true.
+        _raise_safety_net_ticket(
+            ctx, session_id, question,
+            'escalation' if is_legal_threat else 'refund', 'auto_escalated_severe_language',
+            'Auto-escalated by safety net (fraud/cheat/waste-of-time/legal-threat language detected)',
+            'severe_complaint_safety_net',
+        )
+
+    if source == 'agent' and not ctx.ticket_raised and answer_claims_escalation(answer):
+        # Broader backstop than the severe-complaint one above: catches
+        # ANY complaint (not just fraud/cheat) where the agent's own
+        # reply claims it escalated/flagged something but never actually
+        # called create_support_ticket — e.g. a plain "astrologer never
+        # replied, coins deducted, want a refund" complaint, which hit
+        # this at 0/7 in testing despite tool-schema instructions to
+        # always raise a ticket for it. Makes the already-stated claim
+        # true rather than leave it false.
+        _raise_safety_net_ticket(
+            ctx, session_id, question, 'refund', 'auto_escalated_claim_mismatch',
+            'Auto-escalated by safety net (reply claimed an escalation that never happened)',
+            'claim_mismatch_safety_net',
+        )
 
     s3_client.log_event({
         'session_id': session_id,

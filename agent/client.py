@@ -17,7 +17,6 @@ def is_configured() -> bool:
 def call(system_instruction: str, contents: list, tools: list) -> dict:
     """One raw generateContent call with tools enabled. Returns the raw
     Vertex AI response dict. Raises on failure — caller handles fallback."""
-    token = _base._get_access_token()
     function_declarations = [
         {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}
         for t in tools
@@ -25,14 +24,14 @@ def call(system_instruction: str, contents: list, tools: list) -> dict:
     payload = {
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "contents": contents,
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 300},
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800},
         "labels": {"feature": _base.GEMINI_BILLING_FEATURE},
     }
     if function_declarations:
         payload["tools"] = [{"functionDeclarations": function_declarations}]
     response = requests.post(
         _base._endpoint_url(),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers=_base._auth_headers(),
         json=payload,
         timeout=_base.REQUEST_TIMEOUT_SECONDS,
     )
