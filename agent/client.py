@@ -24,7 +24,11 @@ def call(system_instruction: str, contents: list, tools: list) -> dict:
     payload = {
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "contents": contents,
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800},
+        # 800 wasn't enough for a "thinking" model (gemini-3.6-flash):
+        # confirmed live, thinking alone consumed 756 of the 800-token
+        # budget on an ordinary reply, leaving ~0 for visible text and
+        # truncating to finishReason=MAX_TOKENS with empty content.
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 2048},
         "labels": {"feature": _base.GEMINI_BILLING_FEATURE},
     }
     if function_declarations:

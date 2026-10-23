@@ -771,6 +771,19 @@ def ask():
         if not answer:
             # Gemini unconfigured or the whole tool loop failed — everything
             # else in the app still works, same posture as astrohelp.
+            # Discard any partial tool side-effects from this same failed
+            # turn: the model's loop can call a tool (setting ctx.ui_action/
+            # ticket_raised/show_feedback via executor.execute) in an early
+            # iteration and then fail on a LATER one (confirmed live: a
+            # Gemini timeout/503 mid-loop), so run_chat_turn returns None
+            # while ctx still carries that earlier side effect — leaving a
+            # card/ticket-claim attached to a reply that never mentions it.
+            # A failed turn should fall back to a clean, fully generic
+            # reply, not a generic reply plus a leftover action from the
+            # attempt that failed.
+            ctx.ui_action = None
+            ctx.ticket_raised = False
+            ctx.show_feedback = False
             answer = rule_based_answer(question, lang, intent)
             source = 'rule_based'
         elif (
