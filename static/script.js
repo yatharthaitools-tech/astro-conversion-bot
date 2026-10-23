@@ -58,14 +58,13 @@ const TARA_AVATAR_IMG = '<img src="/static/avatars/tara-avatar.png" alt="" />';
 // leaving the chat sitting open with no signal either way. Armed after
 // each bot reply, cleared on any new activity (sending a message, or the
 // chat ending) — fires once per idle window, not repeatedly.
-const INACTIVITY_MS = 60000;
+const INACTIVITY_MS = 90000;
 // If the nudge above doesn't get a response either, actually end the
-// session at 2 minutes of total idle (1 minute after the nudge itself
-// appears) — same close path as the header X, the nudge's own "Close it
-// out" button, and the post-rating auto-close (see closeChat's own
-// comment: "the one place the chat session actually ends"), so a chat
-// nobody's looking at doesn't just sit open forever.
-const AUTO_CLOSE_INACTIVITY_MS = 120000;
+// session at 1 hour of total idle — same close path as the header X,
+// the nudge's own "Close it out" button, and the post-rating auto-close
+// (see closeChat's own comment: "the one place the chat session actually
+// ends"), so a chat nobody's looking at doesn't just sit open forever.
+const AUTO_CLOSE_INACTIVITY_MS = 3600000;
 let inactivityTimer = null;
 let autoCloseTimer = null;
 let hasStartedConversation = false;
