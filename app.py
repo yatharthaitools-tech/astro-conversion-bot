@@ -288,6 +288,19 @@ def _contains_any(normalized: str, keywords) -> bool:
     return any(keyword in normalized for keyword in keywords)
 
 
+# Word-boundary variant for PREDICTION_KEYWORDS only — plain substring
+# containment (_contains_any above) wrongly matched 'will i' inside "will
+# it lag" (confirmed live: "will this video call actually work or will it
+# lag" got deflected as a fortune question instead of reaching the model's
+# own product-confidence handling, despite being exactly the case
+# agent/prompt.py's ASTROLOGY section carves out). Not applied to every
+# keyword list here since several (ISSUE_OVERRIDE_KEYWORDS, SEVERE_
+# COMPLAINT_KEYWORDS, ...) are single words or already unambiguous as
+# plain substrings.
+def _contains_any_word_boundary(normalized: str, phrases) -> bool:
+    return any(re.search(r'(?<!\w)' + re.escape(phrase) + r'(?!\w)', normalized) for phrase in phrases)
+
+
 # Shared {lang: [...]} lookup with an 'en' fallback.
 def _lang_list(keyword_dict: dict, lang: str) -> list:
     return keyword_dict.get(lang, keyword_dict['en'])
@@ -297,7 +310,7 @@ def is_prediction_intent(question, lang):
     normalized = normalize_text(question)
     if _contains_any(normalized, _lang_list(ISSUE_OVERRIDE_KEYWORDS, lang)):
         return False
-    return _contains_any(normalized, _lang_list(PREDICTION_KEYWORDS, lang))
+    return _contains_any_word_boundary(normalized, _lang_list(PREDICTION_KEYWORDS, lang))
 
 
 # Code-level gate for another hard, non-negotiable rule ("fraud/cheat/
