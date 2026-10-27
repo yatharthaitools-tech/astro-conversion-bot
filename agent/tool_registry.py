@@ -13,6 +13,8 @@ ctx.ui_action rather than returning the full action payload — the model
 only needs a short factual summary to describe what happened, not the
 UI's own JSON shape.
 """
+import re
+
 from integrations import (
     coin_credit_client,
     faq_client,
@@ -161,12 +163,72 @@ def _handle_trigger_payment_bottomsheet(safe_input, ctx):
     return {"ok": True, "kind": kind, "payment_methods": action["payment_methods"]}
 
 
+#  Confirmed live: despite this tool's own description instructing the
+# model to ask the visitor what happened FIRST (see agent/tool_schemas.py's
+# CREATE_SUPPORT_TICKET) before ever calling this, the model sometimes
+# calls it anyway on a bare topic with no real detail — self-admitted in
+# its own description text ("wants to report an astrologer but hasn't
+# provided details yet"). Same prompt-reliability gap as
+# PREDICTION_KEYWORDS/is_severe_complaint in app.py — reject the call
+# here rather than trust prompt compliance alone, so the model gets this
+# back as a tool error (it still has iterations left in the same turn,
+# see orchestrator.py's loop) and actually asks instead of raising an
+# empty-shell ticket. Narrow and self-admission-based on purpose: this
+# only catches the model's OWN stated insufficiency, not a general
+# "is this description good enough" judgment call, which needs real
+# understanding this heuristic can't give. Not exhaustive — same
+# documented limitation as app.py's _ESCALATION_CLAIM_WORDS (English has
+# too many ways to say "they haven't told me yet" to ever fully enumerate,
+# e.g. "hasn't PROVIDED" vs "hasn't YET SHARED" vs "hasn't CLARIFIED" all
+# showed up live for the exact same underlying case) — catches the
+# reproduced phrasings, not a general paraphrase detector.
+# Regexes, not plain substrings — a naive substring list ("hasn't
+# provided") missed real phrasings with a word in between ("hasn't YET
+# provided") and a different info-giving verb ("hasn't YET SHARED"), so
+# each pattern tolerates an optional infix word between the negation and
+# a broad set of "told me the details" verbs.
+_INFIX = r"(?:yet\s+|actually\s+|even\s+|further\s+)?"
+_INFO_VERB = (
+    r"(?:provided|specified|shared|told(?:\s+me)?|mentioned|given|"
+    r"described|stated|informed|explained|detailed|clarified|elaborated)"
+)
+_INSUFFICIENT_DESCRIPTION_PATTERNS = [
+    rf"has\s*n'?t\s+{_INFIX}{_INFO_VERB}",
+    rf"have\s*n'?t\s+{_INFIX}{_INFO_VERB}",
+    rf"has\s+not\s+{_INFIX}{_INFO_VERB}",
+    r"no\s+(?:further\s+|real\s+|specific\s+|concrete\s+)?(?:details?|information|info)\b",
+    r"without\s+(?:providing|giving|sharing)\s+(?:any\s+)?details?",
+    r"not\s+(?:sure|certain)\s+what\s+happened",
+    r"doesn'?t\s+know\s+what\s+happened",
+    r"unclear\s+what\s+(?:happened|went\s+wrong|the\s+issue\s+is)",
+    r"yet\s+to\s+(?:provide|specify|share|explain|describe|clarify)",
+    r"no\s+description\s+(?:provided|given|shared)",
+    r"without\s+(?:any\s+)?specifics",
+    r"no\s+specifics",
+    r"(?:awaiting|pending)\s+(?:more\s+)?(?:details?|information|info|clarification)",
+]
+_INSUFFICIENT_DESCRIPTION_RE = re.compile("|".join(_INSUFFICIENT_DESCRIPTION_PATTERNS), re.IGNORECASE)
+
+
+def _description_admits_insufficient_detail(description: str) -> bool:
+    return bool(_INSUFFICIENT_DESCRIPTION_RE.search(description or ""))
+
+
 def _handle_create_support_ticket(safe_input, ctx):
     category = safe_input.get("category")
     sub_category = safe_input.get("sub_category")
     description = safe_input.get("description")
     if not category or not sub_category or not description:
         return {"error": "category, sub_category, and description are required"}
+    if _description_admits_insufficient_detail(description):
+        return {
+            "error": (
+                "Not enough real detail yet to raise this ticket — ask "
+                "the visitor directly what happened (one question, say "
+                "nothing about the team/flagging/forwarding yet) instead "
+                "of calling this tool again until they've answered."
+            )
+        }
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
     # ROUTE on the visitor's OWN declared language from the link (see
     # agent/context.py's SessionContext.user_language) only — never the
