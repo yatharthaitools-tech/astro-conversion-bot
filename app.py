@@ -313,6 +313,40 @@ def is_prediction_intent(question, lang):
     return _contains_any_word_boundary(normalized, _lang_list(PREDICTION_KEYWORDS, lang))
 
 
+# Code-level backstop for agent/prompt.py's own LANGUAGE rule ("never drop
+# a stray word from a different language into an otherwise single-language
+# reply") — confirmed live that prompt instruction alone isn't reliable
+# enough: the model still occasionally opens an English-language reply
+# with a Hindi apology ("Maaf karna, yeh bilkul theek nahi hai.") then
+# continues in English, for a visitor who wrote in plain English. Same
+# precedent as PREDICTION_KEYWORDS/_ESCALATION_CLAIM_WORDS above — strip
+# the mixed-language opener and swap in a plain English apology rather
+# than send the mixed reply. Scoped to the one concrete, reproduced
+# failure mode (a Hindi apology opener leaking into an English reply),
+# not a general language-mixing detector — that would need per-language
+# phrase lists and is far more likely to misfire on genuine Hinglish.
+_HINDI_APOLOGY_OPENER_RE = re.compile(
+    r'^\s*[^.!?]*\b(maaf karna|maaf kijiye|maafi mangti|माफ़?\s*करना|माफ़?\s*कीजिए)\b[^.!?]*[.!?]+\s*',
+    re.IGNORECASE,
+)
+_ENGLISH_APOLOGY_FALLBACK = "I'm really sorry about that."
+
+
+def fix_mixed_language_opener(answer: str, lang: str) -> str:
+    """Only acts when lang == 'en' (the visitor's CURRENT message was
+    plain English, per detect_language) — a reply in any other language
+    is returned untouched, and a genuine Hindi/Hinglish reply to a
+    Hindi/Hinglish message is exactly what prompt.py's LANGUAGE rules
+    call for, not something this should ever touch."""
+    if lang != 'en' or not answer:
+        return answer
+    match = _HINDI_APOLOGY_OPENER_RE.match(answer)
+    if not match:
+        return answer
+    rest = answer[match.end():].strip()
+    return f"{_ENGLISH_APOLOGY_FALLBACK} {rest}".strip() if rest else _ENGLISH_APOLOGY_FALLBACK
+
+
 # Code-level gate for another hard, non-negotiable rule ("fraud/cheat/
 # 'waste of time'/legal-threat language always gets a real ticket") —
 # added after live testing showed the model sometimes CLAIMS it raised a
@@ -371,6 +405,25 @@ def is_severe_complaint(question, lang):
 # leaks despite the REPAIR rule against it (itself worth catching).
 _ESCALATION_CLAIM_WORDS = ['team', 'टीम', 'ticket', 'escalat']
 
+# A forward-looking purpose clause ("so I can flag it for the team", "so
+# that I can escalate this", "ताकि टीम को बता सकूँ") means the escalation
+# HASN'T happened yet — the model is explaining why it's about to ask a
+# question, not claiming it already acted. That's a different situation
+# than the completed-action claim this backstop exists to catch ("I've
+# flagged this" / "maine team ko flag kar diya hai"). Added after live
+# testing: asking "what happened, so I can flag it for the team" (per
+# CREATE_SUPPORT_TICKET's own instruction to ask for a description before
+# raising a ticket) was wrongly force-raising a ticket with no real
+# description yet, just because the reply said "team". Checked per
+# SENTENCE below (not the whole answer) so a genuine completed-action
+# claim elsewhere in the same reply still fires this net even if an
+# unrelated "so I can ..." appears in a different sentence.
+_FORWARD_LOOKING_ESCALATION_PHRASES = ['so i can', 'so that i can', 'ताकि']
+
+# Splits on English/Hindi sentence-ending punctuation — good enough for
+# this per-sentence check, not meant as general sentence tokenization.
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?।])\s+')
+
 
 def answer_claims_escalation(answer: str) -> bool:
     """Checked regardless of the question's detected language — the
@@ -378,7 +431,14 @@ def answer_claims_escalation(answer: str) -> bool:
     to an English question (seen repeatedly in testing), so gating this by
     the question's language would miss an escalation claim phrased in a
     different register than the question."""
-    return _contains_any((answer or '').lower(), _ESCALATION_CLAIM_WORDS)
+    normalized = (answer or '').lower()
+    for sentence in _SENTENCE_SPLIT_RE.split(normalized):
+        if (
+            _contains_any(sentence, _ESCALATION_CLAIM_WORDS)
+            and not _contains_any(sentence, _FORWARD_LOOKING_ESCALATION_PHRASES)
+        ):
+            return True
+    return False
 
 
 # Same claim-mismatch pattern as _ESCALATION_CLAIM_PHRASES above, but for
@@ -779,6 +839,7 @@ def ask():
             image_data=image_data, image_mime=image_mime,
             image_unavailable=image_unavailable,
         )
+        answer = fix_mixed_language_opener(answer, lang)
         source = 'agent'
         intent = map_intent(question)
         if not answer:
