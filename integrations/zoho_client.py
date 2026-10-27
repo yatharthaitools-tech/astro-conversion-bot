@@ -33,16 +33,22 @@ distinguish them; every ticket this bot raises is about a chat visitor,
 never an astrologer, so create_ticket always sends "Customer" explicitly
 rather than silently inheriting Zoho's own wrong default.
 
-cf_user_id / cf_ltv_tier do NOT exist as custom fields on the real
-layout at all (confirmed from the same layout pull — there's no field
-with either of those purposes defined). create_ticket deliberately does
-NOT send them in customFields: an unrecognized custom field key can
-either be silently dropped or cause a validation error depending on
-Zoho's mood, and either way nothing is gained by sending it. That
-information still reaches CS via contact.lastName (user_id) and the
-subject line (ltv_tier) below. If/when real custom fields are created
-for these in Zoho Desk, add their actual apiName back into customFields
-here.
+cf_ltv (Integer — the real ₹ lifetime-spend figure) and cf_ltv_tier
+(Single Line — "high"/"mid"/"new_low"/"new_unpaid") are real custom
+fields on the live layout and are sent in customFields below. cf_ltv
+is Integer-typed, so ltv_amount is rounded to the nearest rupee before
+sending; either is omitted when ltv_amount/ltv_tier is None (visitor
+opened the chat outside either real link format) rather than sending a
+field value Zoho would reject.
+
+cf_user_id does NOT exist as a custom field on the real layout at all
+(confirmed from the same layout pull — no field with that purpose is
+defined). create_ticket deliberately does not send it in customFields:
+an unrecognized custom field key can either be silently dropped or
+cause a validation error depending on Zoho's mood, and either way
+nothing is gained by sending it. That information still reaches CS via
+contact.lastName instead. If/when a real custom field is created for
+it in Zoho Desk, add its actual apiName back into customFields here.
 """
 import logging
 import os
@@ -143,13 +149,13 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
         logger.info("[MOCK zoho_client] created ticket %s for user=%s category=%s", ticket_ref, user_id, category)
         return ticket
 
-    # No cf_ltv_tier/cf_ltv_amount custom field exists on the real layout
-    # (see module docstring), so the exact ₹ figure — not just the tier
-    # bucket — goes into the subject (for a glance at the ticket list)
-    # and as its own line in the description (for anyone actually reading
-    # the ticket). ltv_amount is the real lifetime-spend figure from the
-    # link that opened the chat (agent/context.py's SessionContext.ltv),
-    # not a mocked value.
+    # cf_ltv/cf_ltv_tier (see module docstring) carry the tier/amount as
+    # real Zoho fields now, but the exact ₹ figure still goes into the
+    # subject (for a glance at the ticket list) and as its own line in
+    # the description (for anyone actually reading the ticket) too.
+    # ltv_amount is the real lifetime-spend figure from the link that
+    # opened the chat (agent/context.py's SessionContext.ltv), not a
+    # mocked value.
     ltv_label = f"₹{ltv_amount:,.2f}" if ltv_amount is not None else "unranked"
 
     try:
@@ -172,16 +178,22 @@ def create_ticket(user_id: str, category: str, sub_category: str, description: s
             # defaultValue "Astrologer" — every ticket this bot raises is
             # about a CHAT VISITOR, never an astrologer, so this must be
             # explicit or every ticket silently gets mistagged as the
-            # wrong user type via Zoho's own default. cf_user_id/
-            # cf_ltv_tier are deliberately NOT sent here: no such custom
-            # fields exist on the real layout (see docstring); that info
-            # already reaches CS via contact.lastName and the subject
-            # line below instead.
+            # wrong user type via Zoho's own default. cf_user_id is
+            # deliberately NOT sent here: no such custom field exists on
+            # the real layout (see docstring); that info already reaches
+            # CS via contact.lastName instead.
             "customFields": {
                 "cf_sub_issue": _ZOHO_SUB_ISSUE_PLACEHOLDER,
                 "cf_user_type": "Customer",
             },
         }
+        if ltv_amount is not None:
+            # cf_ltv is Integer-typed on the real layout — Zoho has no
+            # concept of a ₹-and-paise custom field here, so this rounds
+            # rather than truncates (13924.60 -> 13925, not 13924).
+            payload["customFields"]["cf_ltv"] = round(ltv_amount)
+        if ltv_tier:
+            payload["customFields"]["cf_ltv_tier"] = ltv_tier
         if evidence_url:
             payload["description"] = f"{payload['description']}\n\nEvidence: {evidence_url}"
         if conversation_transcript:

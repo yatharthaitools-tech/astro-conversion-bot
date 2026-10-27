@@ -4,9 +4,10 @@ zoho_client.py's module docstring): category must be one of the real 15
 picklist values, cf_sub_issue and cf_user_type are both mandatory
 picklists (cf_sub_issue has no field this bot's free-text sub_category
 can reliably match, so a fixed placeholder satisfies it; cf_user_type
-must always be "Customer", not Zoho's own "Astrologer" default), and
-cf_user_id/cf_ltv_tier don't exist as real custom fields at all —
-user_id/ltv_tier instead travel via contact name and the subject line.
+must always be "Customer", not Zoho's own "Astrologer" default),
+cf_ltv/cf_ltv_tier are real custom fields and are sent when a value is
+available, and cf_user_id doesn't exist as a real custom field at all —
+user_id instead travels via the contact name.
 Mocks requests.post the same way test_coin_credit_client.py mocks its
 own outbound call — no real network, no real Zoho org needed.
 """
@@ -43,17 +44,20 @@ def test_real_ticket_sends_only_verified_custom_fields(monkeypatch):
 
     result, captured = _capture_post(
         user_id="u_4851070", category="payment", sub_category="recharge_failed",
-        description="coins missing after recharge", ltv_tier="high",
+        description="coins missing after recharge", ltv_tier="high", ltv_amount=13924.60,
     )
 
     assert result["zoho_ticket_id"] == "zoho-ticket-99"
-    # cf_user_id/cf_ltv_tier are NOT real custom fields on the live
-    # layout — sending them risks a silent drop or a validation error,
-    # for no gain, since this info already reaches CS another way (below).
+    # cf_user_id is NOT a real custom field on the live layout — sending
+    # it risks a silent drop or a validation error, for no gain, since
+    # this info already reaches CS another way (contact.lastName below).
     # cf_user_type IS real and mandatory — must always be "Customer",
-    # never Zoho's own "Astrologer" default.
+    # never Zoho's own "Astrologer" default. cf_ltv/cf_ltv_tier ARE real
+    # — cf_ltv is Integer-typed, so the ₹ figure is rounded (13924.60 ->
+    # 13925), not truncated.
     assert captured["json"]["customFields"] == {
         "cf_sub_issue": "General Inquiry", "cf_user_type": "Customer",
+        "cf_ltv": 13925, "cf_ltv_tier": "high",
     }
     assert "u_4851070" in captured["json"]["contact"]["lastName"]
     assert "high" in captured["json"]["subject"]
