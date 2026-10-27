@@ -24,11 +24,13 @@ def call(system_instruction: str, contents: list, tools: list) -> dict:
     payload = {
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "contents": contents,
-        # 800 wasn't enough for a "thinking" model (gemini-3.6-flash):
-        # confirmed live, thinking alone consumed 756 of the 800-token
-        # budget on an ordinary reply, leaving ~0 for visible text and
-        # truncating to finishReason=MAX_TOKENS with empty content.
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 2048},
+        # 2048 was sized for a "thinking" model (gemini-3.6-flash), which
+        # burned most of an 800-token budget on invisible reasoning alone
+        # (confirmed live: 756/800 consumed, truncating to an empty
+        # reply). Back down to 1000 for the non-thinking model this app
+        # actually runs (GEMINI_MODEL, see .env) — plenty of headroom for
+        # the 50-word reply cap without paying for unused budget.
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1000},
         "labels": {"feature": _base.GEMINI_BILLING_FEATURE},
     }
     if function_declarations:
