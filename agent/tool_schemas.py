@@ -143,9 +143,12 @@ SEARCH_ASTROLOGERS = {
         "looked them up and failed — the visitor should never sense the "
         "lookup/mechanism at all. Say she's/he's busy right now instead "
         "(that one word — busy — is the required framing; never a "
-        "specific fake ETA or status since you don't have one), then say "
-        "you're connecting with someone similar, warm and natural, "
-        "matching the card that's already shown. One "
+        "specific fake ETA or status since you don't have one), then "
+        "offer to connect them with someone similar instead — a genuine "
+        "question ('I can connect you with someone similar, want me "
+        "to?'), warm and natural, never a declared decision ('I'm "
+        "connecting you now') — even though the card is already shown, "
+        "nothing is actually connected until they tap it themselves. One "
         "match means unambiguous (confirm briefly, then proceed), two or "
         "more means genuinely ambiguous (ask a one-line question naming "
         "the options before proceeding — never pick one silently). Reply "
@@ -190,23 +193,34 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
         "required response to ANY prediction/fortune question — never "
         "answer the prediction itself, always call this instead. Never "
         "share an astrologer's phone number or any private contact detail "
-        "under any circumstances — this tool (or notify_me_subscribe, if "
-        "they're offline) is always the substitute for direct contact. "
+        "under any circumstances — this tool is always the substitute for "
+        "direct contact. Never promise to notify them when someone comes "
+        "online either (no 'I'll let you know when X is back') — there's "
+        "no real notification system behind that promise (see "
+        "NOTIFY_ME_SUBSCRIBE's own note on why it's disabled); just state "
+        "the person's status, then OFFER to connect them with whoever the "
+        "card shows instead — a genuine question ('want me to connect you "
+        "with someone else?'), never a declared decision ('I'm connecting "
+        "you now') — nothing is actually connected until they tap the "
+        "card themselves. "
         "If you passed astrologer_id and that person isn't actually "
         "available, the card ALREADY falls back to showing someone who "
         "is (never routes Connect to someone offline) — you don't need "
         "to call this again to get that; the result tells you this "
         "happened via requested_astrologer_name/availability/"
         "next_available_at (present only in this case). State their "
-        "status plainly, then that you're connecting with someone "
-        "available now instead — never claim the shown card will reach "
-        "the person you named if it won't. next_available_at is a real "
-        "ETA when known ('Nidhi's offline, back in about 40 minutes') "
-        "but is usually null for now — there's no real schedule data "
-        "behind this yet, so when it's null just state their status "
-        "('Nidhi's offline right now') without inventing a return time. "
-        "You can still "
-        "offer notify_me_subscribe on top of that for the named person. "
+        "status plainly, then OFFER to connect them with someone "
+        "available now instead — a genuine question ('want me to connect "
+        "you with someone available right now?'), never a declared "
+        "decision ('I'm connecting you now') — never claim the shown card "
+        "will reach the person you named if it won't. next_available_at "
+        "is a real ETA when known ('Nidhi's offline, back in about 40 "
+        "minutes') but is usually null for now — there's no real schedule "
+        "data behind this yet, so when it's null just state their status "
+        "('Nidhi's offline right now') without inventing a return time — "
+        "then offer connecting with the available astrologer the card "
+        "already shows (same ask-don't-declare rule), don't offer to "
+        "notify them (see the no-false-notification-promise note above). "
         "ALSO the required response to any offers/discount/promo-code "
         "question ('any offers right now?', 'any discount?') — that data "
         "isn't available right now, so never state a specific offer, "
@@ -260,26 +274,24 @@ TRIGGER_RECOMMEND_ASTROLOGER = {
     },
 }
 
+# DISABLED — see ALL_TOOLS' own comment on why. agent/tool_registry.py's
+# _handle_notify_me_subscribe is explicitly MOCKED (its own comment: "real
+# version would write a notify-me subscription row") — it never actually
+# persists a subscription or sends any real notification when the
+# astrologer comes online. With this registered, the model would
+# genuinely promise "I'll notify you" and that promise would just never
+# be kept, which is worse than not promising it at all. Schema/handler
+# stay in place, ready to re-enable once a real notify-on-availability
+# system exists behind this.
 NOTIFY_ME_SUBSCRIBE = {
     "name": "notify_me_subscribe",
     "description": (
-        "Subscribes the visitor to be notified the moment a specific "
-        "astrologer (who's currently offline/busy) comes online. Only ever "
-        "called for someone the visitor themselves already named and "
-        "search_astrologers already resolved to an id — use this as the "
-        "conversion-recovery path when that person isn't available right "
-        "now — ALWAYS also call trigger_recommend_astrologer in the SAME "
-        "reply for a live alternate (it automatically shows someone "
-        "actually available, whether or not you pass this same "
-        "astrologer_id), don't just say 'keep checking the app'. The "
-        "result's next_available_at is an estimated return "
-        "time when known — say it directly ('back in about 40 minutes, "
-        "I'll ping you then too') rather than a vague 'I'll notify you'; "
-        "when it's null there's genuinely no known return time, so the "
-        "notification framing alone is what you have. Also the correct "
-        "response if the visitor asks for their phone number — never "
-        "share a phone number or private contact detail, offer this "
-        "instead."
+        "DISABLED — there is no real notify-on-availability system behind "
+        "this (see the module comment above and ALL_TOOLS' own note). Do "
+        "not call this or promise to notify a visitor when an astrologer "
+        "comes online; state their status and pivot to connecting with "
+        "whoever trigger_recommend_astrologer's card already shows "
+        "instead (see its own description)."
     ),
     "input_schema": {
         "type": "object",
@@ -687,10 +699,19 @@ ALL_TOOLS = [
     # TICKET's category='refund' + TRIGGER_RECOMMEND_ASTROLOGER instead
     # (see CREATE_SUPPORT_TICKET's own description). Schemas/handlers/
     # service code stay in place, ready to re-enable.
+    # NOTIFY_ME_SUBSCRIBE deliberately NOT registered — its own handler
+    # (agent/tool_registry.py's _handle_notify_me_subscribe) is MOCKED: it
+    # never actually persists a subscription or sends a real notification
+    # when the astrologer comes online, so registering this tool would
+    # have the model genuinely promise "I'll notify you" and never keep
+    # it. When a named astrologer is offline, TRIGGER_RECOMMEND_
+    # ASTROLOGER's own card already falls back to someone available —
+    # state the named person's status and pivot to that instead (see its
+    # own description). Schema/handler stay in place, ready to re-enable
+    # once a real notify-on-availability system exists.
     GET_LTV_TIER,
     SEARCH_ASTROLOGERS,
     TRIGGER_RECOMMEND_ASTROLOGER,
-    NOTIFY_ME_SUBSCRIBE,
     TRIGGER_PAYMENT_BOTTOMSHEET,
     CREATE_SUPPORT_TICKET,
     LOG_FEATURE_REQUEST,
