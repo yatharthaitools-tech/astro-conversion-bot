@@ -229,6 +229,22 @@ def _handle_create_support_ticket(safe_input, ctx):
                 "of calling this tool again until they've answered."
             )
         }
+    existing = ticket_service.get_open_ticket(ctx.session_id, category)
+    if existing:
+        return {
+            "error": (
+                "A ticket is already open for this session in this same "
+                "category — do not raise another one and do not call "
+                "this tool again this turn. If they're pushing back on "
+                "the SAME issue, give one brief, honest reply: it's "
+                "already with the team and they'll update you — don't "
+                "say you're re-raising, escalating further, marking it "
+                "urgent/high-priority, or sending it to a senior team, "
+                "none of that is real. (If this is actually a different "
+                "issue, use the right different category instead — this "
+                "error only fires for a repeat of the same category.)"
+            )
+        }
     evidence_url = safe_input.get("evidence_url") or ctx.last_attachment_url
     # ROUTE on the visitor's OWN declared language from the link (see
     # agent/context.py's SessionContext.user_language) only — never the

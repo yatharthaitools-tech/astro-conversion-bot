@@ -482,6 +482,20 @@ def last_bot_message(history: list) -> str:
 # Shared by /ask's two code-level ticket backstops (severe-complaint and
 # claim-mismatch) — same create_ticket call and ctx bookkeeping either way.
 def _raise_safety_net_ticket(ctx, session_id, question, category, sub_category, description_prefix, trace_source):
+    # Confirmed live: a visitor pushing back repeatedly on an issue that
+    # already has an open ticket kept re-triggering answer_claims_escalation
+    # (the reply claims "escalating again"/"marking urgent" each time),
+    # which raised a FRESH duplicate ticket every turn via this same path —
+    # it goes straight to ticket_service, bypassing tool_registry.py's own
+    # open-ticket guard entirely. Same fix, same place both checks need it.
+    # Deliberately NOT category-scoped like that guard is: `category` here
+    # is always a hardcoded 'refund'/'escalation' regardless of what the
+    # visitor's actual issue is, so matching on it would let a mismatched
+    # ticket through right alongside an already-open one for the real
+    # issue — any open ticket this session is enough to skip this.
+    if ticket_service.get_open_ticket(session_id):
+        ctx.ticket_raised = True
+        return
     ticket_service.create_ticket(
         ctx.user_id, category, sub_category, f"{description_prefix}: {question}",
         session_id=session_id, language=ctx.user_language, ltv=ctx.ltv,

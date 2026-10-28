@@ -743,6 +743,37 @@ def session_has_ticket(session_id: str) -> bool:
             return cur.fetchone() is not None
 
 
+def get_open_ticket_for_session(session_id: str, category: str = None) -> dict:
+    """Most recent NOT-yet-resolved/closed ticket already raised in this
+    session, or None. With `category` given, only matches that SAME
+    category — a genuinely different complaint (e.g. a payment issue
+    after an astrologer-misbehavior report) still gets its own ticket,
+    only a repeat of the SAME category is blocked. `category=None` (the
+    safety net's use — see app.py's _raise_safety_net_ticket) matches ANY
+    open ticket regardless of category, deliberately NOT the same as
+    passing category='refund'/etc: SQL's `category = NULL` would never
+    match anything, which would silently defeat the whole guard. Always
+    scoped to this session, not the whole user, so an unrelated new issue
+    in a LATER session still gets its own ticket normally."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            if category is None:
+                cur.execute(
+                    """SELECT * FROM tickets WHERE session_id = %s
+                       AND status NOT IN ('Resolved', 'Closed')
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (session_id,),
+                )
+            else:
+                cur.execute(
+                    """SELECT * FROM tickets WHERE session_id = %s AND category = %s
+                       AND status NOT IN ('Resolved', 'Closed')
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (session_id, category),
+                )
+            return _to_dict(cur.fetchone())
+
+
 def get_latest_resolved_ticket(user_id: str) -> dict:
     """Most recently Resolved/Closed ticket for this visitor — what #5's
     72-hour reopen window checks against. None if they have no

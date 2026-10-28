@@ -74,6 +74,16 @@ def get_tickets(user_id: str) -> list:
     return dashboard_db.list_tickets_for_user(user_id)
 
 
+def get_open_ticket(session_id: str, category: str = None) -> dict:
+    """None if this session has no open ticket yet for this category —
+    see agent/tool_registry.py's duplicate-ticket guard. A different
+    category for the same session is a genuinely separate issue and
+    still gets its own ticket."""
+    if not session_id:
+        return None
+    return dashboard_db.get_open_ticket_for_session(session_id, category)
+
+
 def update_ticket_status(ticket_id: int, status: str, note: str = None) -> bool:
     """Used by the admin dashboard — updates the local record, then
     best-effort pushes the same status to Zoho if this ticket was
